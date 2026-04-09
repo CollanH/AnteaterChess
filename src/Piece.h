@@ -5,27 +5,25 @@
 #ifndef CHESS_PIECE_H
 #define CHESS_PIECE_H
 typedef enum pieceName {
+	EMPTY,
 	KING,
 	QUEEN,
 	ROOK,
 	BISHOP,
-	KNIGHT
+	KNIGHT,
 	ANTEATER,
-	ANT;
+	ANT
 } pieceName;
 
-typedef enum file {
-	A, B, C, D, E, F, G, H, I, J;
-} pieceName;
+
 
 typedef enum color {
-	black, white;
-};
+	NONE, BLACK, WHITE
+} color;
 
 typedef struct Piece {
-	pieceName;
-	rank;
-	file;
+	pieceName pieceName;
+	color color;
 
 }Piece;
 
