@@ -19,13 +19,13 @@ TODO: make sure piece code order matches board.h
 
 static const int PIECE_VALUE[] ={
     0, // 0 = EMPTY
-    100,  // 1 = PAWN
-    175, // 2 = ANTEATER
-    320, // 3 = KNIGHT
+    0, // 1 = KING
+    900, // 2 = QUEEN
+    175, // 3 = ANTEATER
     330, // 4 = BISHOP
-    500, // 5 = ROOK
-    900, // 6 = QUEEN
-    0 // 7 = KING
+    320, // 5 = KNIGHT
+    500, // 6 = ROOK
+    100,  // 7 = PAWN
 };
 
 
@@ -34,6 +34,25 @@ EVALUATION WEIGHTS
 tunable constants used across the eval functions
 adjust once engine play legal chess
 */
+
+/*Mobility - centipawns per reachable square, per piece type*/
+#define MOB_KNIGHT 4
+#define MOB_BISHOP 5
+#define MOB_ROOK 3
+#define MOB_Queen 2
+#define MOB_ANTEATER 1
+
+/*Pawn structure penalties*/
+#define DOUBLED_ANT_PENALTY 20
+#define ISOLATED_ANT_PENALTY 20
+
+/*King Safety - shield penalities*/
+#define SHIELD_MISSING 15
+#define SHIELD_PUSHED 7
+
+/*Anteater bonus per adjacent enemy ant*/
+#define ANTEATER_ADJ_BONUS 30
+
 
 /*Function Declarations*/
 
