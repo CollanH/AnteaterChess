@@ -8,8 +8,3 @@ add_executable(chess
         src/gui.c
 )
 
-add_executable(collan
-        src/collanTest.c
-
-
-)

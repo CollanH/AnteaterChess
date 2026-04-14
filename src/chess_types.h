@@ -56,8 +56,11 @@ typedef struct {
 typedef struct GameState {
     Piece board[8][10];
     struct GameState* prev_state;
-    bool yellow_castled;
-    bool blue_castled;
+    bool yellow_qscastle;
+	bool yellow_kscastle;
+	bool blue_qscastle;
+	bool blue_kscastle;
+
     bool anteater_ate;
     Square en_passant_square;
     Color turn;
