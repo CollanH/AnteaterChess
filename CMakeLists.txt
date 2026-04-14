@@ -5,5 +5,6 @@ add_executable(chess
         src/chess_types.c
         src/legalMoveGen.h
         src/legalMoveGenTest.c
+        src/test.c
 )
 
