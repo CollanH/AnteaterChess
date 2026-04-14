@@ -32,3 +32,26 @@ Move* moveList_at(MoveList* moveList, int index){
 const Piece* piece_at(const GameState* gs, Square square){
 	return &(gs->board[square.rank][square.file]);
 }
+
+void replace_piece(GameState* gs, Piece piece, Square square){
+	gs->board[square.rank][square.file] = piece;
+
+}
+
+Piece make_piece(PieceType pt, Color color) {
+	Piece p;
+	p.piecetype = pt;
+	p.color = color;
+
+	return p;
+}
+
+GameState make_move(const GameState* gs, Move move){
+	GameState new_gs = *gs;
+	Piece piece = *piece_at(gs, move.from);
+	replace_piece(&new_gs, piece, move.to);
+	replace_piece(&new_gs, make_piece(EMPTY, YELLOW), move.from);
+
+	return new_gs;
+
+}

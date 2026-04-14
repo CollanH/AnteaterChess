@@ -28,8 +28,9 @@ typedef enum {
 } PieceType;
 
 typedef enum {
-    YELLOW,
-    BLUE
+	YELLOW,
+	BLUE,
+
 } Color;
 
 typedef struct {
@@ -75,4 +76,5 @@ void delete_move(MoveList* moveList, int index);
 // appends a move at the end of a moveList
 void append_move(MoveList* moveList, Move move);
 const Piece* piece_at(const GameState* gs, Square square);
+GameState make_move(const GameState* gs, Move move);
 #endif /* CHESS_TYPES_H */
