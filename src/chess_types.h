@@ -33,8 +33,8 @@ typedef enum {
 } Color;
 
 typedef struct {
-    File file;
-    int rank;
+	int rank;
+	File file;
 } Square;
 
 typedef struct {
@@ -62,4 +62,17 @@ typedef struct GameState {
     Color turn;
 } GameState;
 
+
+
+
+Square make_square(int rank, File file);
+// initializes an empty move list
+MoveList initialize_moveList();
+// returns a pointer to a move in moveList at index
+Move* moveList_at(MoveList* moveList, int index);
+// deletes a move at an index
+void delete_move(MoveList* moveList, int index);
+// appends a move at the end of a moveList
+void append_move(MoveList* moveList, Move move);
+const Piece* piece_at(const GameState* gs, Square square);
 #endif /* CHESS_TYPES_H */

@@ -1,5 +1,5 @@
-cmake_minimum_required(3.20)
+cmake_minimum_required(VERSION 3.20)
 add_executable(chess
         src/legalMoveGen.c
-        src/Piece.h
+        src/chess_types.c
 )
