@@ -4,5 +4,12 @@ add_executable(chess
         src/legalMoveGen.c
         src/chess_types.c
         src/legalMoveGen.h
+        src/legalMoveGenTest.c
         src/gui.c
+)
+
+add_executable(collan
+        src/collanTest.c
+
+
 )

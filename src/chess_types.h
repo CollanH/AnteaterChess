@@ -77,4 +77,7 @@ void delete_move(MoveList* moveList, int index);
 void append_move(MoveList* moveList, Move move);
 const Piece* piece_at(const GameState* gs, Square square);
 GameState make_move(const GameState* gs, Move move);
+Piece make_piece(PieceType pt, Color color);
+void replace_piece(GameState* gs, Piece piece, Square square);
+GameState initalize_empty_GameState();
 #endif /* CHESS_TYPES_H */
