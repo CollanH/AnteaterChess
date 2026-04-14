@@ -7,5 +7,11 @@ add_executable(chess
         src/legalMoveGenTest.c
         src/gui.c
         src/test.c
+        src/legalMoveGenTest.c
 )
 
+add_executable(collan
+        src/collanTest.c
+
+
+)
