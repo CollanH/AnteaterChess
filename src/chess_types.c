@@ -70,8 +70,10 @@ GameState initalize_empty_GameState() {
 
 	gs.turn = YELLOW;
 	gs.anteater_ate = false;
-	gs.blue_castled = false;
-	gs.yellow_castled = false;
+	gs.yellow_kscastle = true;
+	gs.yellow_qscastle = true;
+	gs.blue_kscastle = true;
+	gs.blue_qscastle = true;
 	gs.en_passant_square = make_square(-2,-1);
 	gs.prev_state = NULL;
 
