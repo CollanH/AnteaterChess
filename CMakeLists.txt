@@ -8,5 +8,6 @@ add_executable(chess
         src/gui.c
         src/test.c
         src/legalMoveGenTest.c
+        src/test.c
 )
 
