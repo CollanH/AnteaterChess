@@ -7,8 +7,3 @@ add_executable(chess
         src/legalMoveGenTest.c
 )
 
-add_executable(collan
-        src/collanTest.c
-
-
-)
