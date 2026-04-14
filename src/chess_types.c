@@ -5,12 +5,16 @@ Square make_square(int rank, File file){
 	Square sq;
 	sq.file = file;
 	sq.rank = rank;
+
+	return sq;
 }
 
 MoveList initialize_moveList(){
 	MoveList mv;
 	memset(&mv.moves, 0, sizeof(mv.moves));
 	mv.count = 0;
+
+	return mv;
 }
 
 void append_move(MoveList* moveList, Move move){
@@ -54,4 +58,24 @@ GameState make_move(const GameState* gs, Move move){
 
 	return new_gs;
 
+}
+
+GameState initalize_empty_GameState() {
+	GameState gs;
+	for(int i = 0; i < 8; i++){
+		for(int j = 0; j < 10; j++) {
+			gs.board[i][j] = make_piece(EMPTY, YELLOW);
+
+
+		}
+	}
+
+	gs.turn = YELLOW;
+	gs.anteater_ate = false;
+	gs.blue_castled = false;
+	gs.yellow_castled = false;
+	gs.en_passant_square = make_square(-2,-1);
+	gs.prev_state = NULL;
+
+	return gs;
 }
