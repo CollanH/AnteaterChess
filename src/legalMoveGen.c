@@ -8,18 +8,20 @@
  * 3. Check if it puts your king in check
  *
  */
+
+
+/*
+ * returns true if the king of color is being attacked by an enemy piece
+ * returns false otherwise
+ */
+bool inCheck(GameState* gs, Color color);
 void squareToMoves(const GameState *gs, Square square, MoveList* moveList);
-
+void kingMoves(const GameState *pState, Square square, MoveList *list);
 void anteaterMoves(const GameState *pState, Square square, MoveList *list);
-
 void queenMoves(const GameState *pState, Square square, MoveList *list);
-
 void bishopMoves(const GameState *pState, Square square, MoveList *list);
-
 void knightMoves(const GameState *pState, Square square, MoveList *list);
-
 void rookMoves(const GameState *pState, Square square, MoveList *list);
-
 void antMoves(const GameState *pState, Square square, MoveList *list);
 
 // returns movelist of moves based on a square
@@ -44,9 +46,6 @@ MoveList legalMoveGen(const GameState *gs) {
 
 }
 
-void kingMoves(const GameState *gs, Square square, MoveList* moveList){
-
-}
 
 void squareToMoves(const GameState *gs, Square square, MoveList* moveList) {
 	PieceType pt = gs->board[square.rank][square.file].piecetype;
@@ -336,6 +335,9 @@ bool inCheck(GameState* gs, Color color){
 
 }
 
+void kingMoves(const GameState *gs, Square square, MoveList* moveList){
+
+}
 
 
 void antMoves(const GameState *pState, Square square, MoveList *list) {
