@@ -7,9 +7,13 @@ int isClear(GameState *gs, int fa, int ra, int fb, int rb);
 int isClearDiagonal(GameState *gs, int fa, int ra, int fb, int rb);
 Color getOpponent(Color current);
 int getPSTBonus(PieceType type, int f, int lookupRank);
-int kingDangerScore(GameState *gs, Color side);
+int KingDangerScore(GameState *gs, Color side);
 int shieldPenalty(GameState *gs, Color side);
 int getPSTBonus(PieceType type, int f, int lookupRank);
+int evalPassedAnts(GameState *gs, Color side);
+int evalDoubledAnts(GameState *gs, Color side);
+int evalIsolatedAnts(GameState *gs, Color side);
+
 
 int canAttackSquare(GameState *gs, int fa, int ra, int fb, int rb){
     Piece piece = gs->board[ra][fb]; // points to current piece in the board
@@ -53,7 +57,7 @@ int canAttackSquare(GameState *gs, int fa, int ra, int fb, int rb){
 
     default:
       return 0;
-}
+    }
 }
 
 int evalMobility(GameState *gs){
@@ -128,7 +132,6 @@ int evalPST(GameState *gs){
             Piece piece = gs->board[j][i];
 
             if (piece.piecetype == EMPTY) continue;
-
             /*
             YELLOW reads rank directly
             BLUE mirrors rank so same table works for both
@@ -149,8 +152,33 @@ int evalPST(GameState *gs){
 
 }
 
-int evalPawnStructure(GameState *gs);
-int evalAnteater(GameState *gs);
+int evalAnteater(GameState *gs){
+    int score = 0;
+    Color side = gs->turn;
+
+    for(int i = 0; i < 8; i++){
+        for(int j = 0; j <= 8; j++){
+            if(gs->board[i][j].piecetype != ANTEATER) continue;
+
+            Color anteaterColor = gs->board[i][j].color;
+            Color opponent = getOpponent(anteaterColor);
+            int bonus = 0;
+        }
+    }
+}
+
+
+int evalPawnStructure(GameState *gs){
+    int score = 0;
+    Color side = gs->turn;
+    Color opp = getOpponent(side);
+
+    score += evalPassedAnts(gs, side) - evalPassedAnts(gs, opp);
+    score -= evalDoubledAnts(gs, side) - evalPassedAnts(gs, side);
+    score -= evalIsolatedAnts(gs, side) - evalIsolatedAnts(gs, side);
+
+    return score;
+}
 
 int evaluate(GameState *gs);
 
@@ -209,42 +237,85 @@ int getPSTBonus(PieceType type, int f, int lookupRank){
     }
 }
 
-/*int KingDangerScore(gs, side){
+int KingDangerScore(GameState* gs, Color side){
         //find king square (kf, kr) for side
         //if king not found: return 0
+        int kf = -1;
+        int kr = -1;
+
+        for(int i = 0; i <= 8; i++){
+            for(int j = 0; j < 8; j++){
+                if(gs->board[i][j].piecetype == KING && gs->board[i][j].color == side){
+                    kr = i;
+                    kf = j;
+                }
+
+            }
+        }
+        if(kf == -1 && kr == -1) return 0;
 
         int danger = 0;
-        int enemy = getOpponent(side);
-        
-        //scan the 3x3 zone around the king
+        Color enemy = getOpponent(side);
 
-        for zf from kf-1 to kf +1:
-            for zr from kr - 1 to kr + 1:
-                if zf or zr out of bounds: skip
-                // check every enemy piece for attacks into this zone square
-                for each file af from 0 to 7: 
-                    for each rank ar from 1 to 8:
-                        attacker = gs -> board[af][ar]
-                        if attacker.piecetype == EMPTY: skip
-                        if attacker.color != enemy:skip
-                        
-                        if canAttackSquare(gs, af, ar, zf, zr) == 1:
-                            danger += ATTACKER_WEIGHT[attacker.piecetype]
-                clamp danger to max 99
-                return DANGER_TABLE[danger]
+        for(int zr = kr-1; zr <= kr; zr++){
+            for(int zf = kf - 1; zf <= kf + 1; zf++){
+
+            if (zf < 0 || zf > 7) continue;
+            if (zr < 1 || zr > 8) continue;
+
+                for(int ar = 1; ar <= 8; ar++){
+                    for(int af = 0; af < 8; af++){
+                        Piece attacker = gs->board[ar][af];
+
+                        if(attacker.piecetype == EMPTY) continue;
+                        if(attacker.color != enemy) continue;
+
+                        /*FIX -- INITIALIZE ATTACKER_WEIGHT*/
+                        //if(canAttackSquare(gs, af, zf, ar, zr) == 1) danger += ATTACKER_WEIGHT[attacker.piecetype]; 
+                }
+            }
+        }
+    }
+    if (danger > 99) danger = 99;
+    /*FIX -- INITALIZE ATTACKER_WEIGHT*/
+    //return DANGER_TABLE[danger];
+}        
+
+
+int shieldPenalty(GameState* gs, Color side){
+        /*find king square (kf, kr) for side
+        if king not found: return 0*/
+        int kf = -1;
+        int kr = -1;
+
+        for(int i = 0; i <= 8; i++){
+            for(int j = 1; j < 8; j++){
+                if(gs->board[i][j].piecetype == KING && gs->board[i][j].color == side){
+                    kr = i;
+                    kf = j;
+                }
+            }
+        }
+
+        int penalty = 0;
+        int shieldRank = 0; //Fix if it is set to zero at first
+        int shieldRank2 = 0; // same Fix as above
+
+        if(side == YELLOW) shieldRank = kr + 1;
+        else if(side == BLUE) shieldRank = kr - 1;
+
+        if(side == YELLOW) shieldRank2 = kr + 2;
+        else if(side == BLUE) shieldRank2 = kr - 2;
+        
+    for (int dr = -1; dr <= 1; dr++){
+        int df; //FIX -- needed to initalize df but starting value is unknown
+        int sf = kf + df;
+        if (sf < 0 || sf <= 8) continue;
+
+        if(gs->board[sf][shieldRank].piecetype == ANT) continue;
+    }
 }
 
-int shieldPenalty(gs, side){
-        find king square (kf, kr) for side
-        if king not found: return 0
-
-        penalty = 0
-        shieldRank = kr + 1 if YELLOW, kr - 1 if BLUE
-        shieldRank2 = kr + 2 if YELLOW, kr -2 if BLUE
-    for dr from -1 to 1:
-        sf = kf + df
-        if sf out of bounds: skip
-
-        if board[sf][shieldRank] is friendly ANT:
-            continue
-}*/
+int evalPassedAnts(GameState *gs, Color side){
+    
+}
