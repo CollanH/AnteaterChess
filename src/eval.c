@@ -319,3 +319,11 @@ int shieldPenalty(GameState* gs, Color side){
 int evalPassedAnts(GameState *gs, Color side){
     
 }
+
+int evalDoubledAnts(GameState *gs, Color side){
+
+}
+
+int evalIsolatedAnts(GameState* gs, Color side){
+    
+}
