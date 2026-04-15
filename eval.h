@@ -1,86 +1,159 @@
+
 #ifndef EVAL_H
 #define EVAL_H
-/*
-eval.h - Chess board Evaluator
-#include "eval.h" in any file that needs to call evaluate() 
-or any of the subfunctions
-*/
+#include "chess_types.h"
 
-/*TODO: Define Board and Piece Structs with group in a 
-board.h file and place #include "board.h" here*/
-
-/*
-CENTIPAWN PIECE WEIGHTS
-used by evalMaterial()
-using centipawn scale
-100 cp = 1 pawn
-TODO: make sure piece code order matches board.h
-*/
-
-static const int PIECE_VALUE[] ={
-    0, // 0 = EMPTY
-    0, // 1 = KING
-    900, // 2 = QUEEN
-    175, // 3 = ANTEATER
-    330, // 4 = BISHOP
-    320, // 5 = KNIGHT
-    500, // 6 = ROOK
-    100,  // 7 = PAWN
+/*CENTIPAWN PIECE WEIGHTS*/
+static const int PIECE_VALUE[8] ={
+    0, // EMPTY
+    0, // KING
+    900, // QUEEN
+    175, // ANTEATER
+    330, // BISHOP
+    320, // KNIGHT
+    500, // ROOK
+    100,  // ANT
 };
 
+/*PIECE SQUARE TABLE*/
+static const int PST_ANT[8][10]={
+    {  0,  0,   5,   5,   0,   0,   5,  50,   0,  0 },
+    {  0,  0,  10,  -5,   0,   0, -10,  50,   0,  0 },
+    {  0,  0,  10,  10,  20,  20,  20,  50,   0,  0 },
+    {  0,  0,   5,  10,  25,  25,  30,  50,   0,  0 },
+    {  0,  0,   5,  10,  25,  25,  30,  50,   0,  0 },
+    {  0,  0,  10,  10,  20,  20,  20,  50,   0,  0 },
+    {  0,  0,  10,  -5,   0,   0, -10,  50,   0,  0 },
+    {  0,  0,   5,   5,   0,   0,   5,  50,   0,  0 }
 
-/*
-EVALUATION WEIGHTS
-tunable constants used across the eval functions
-adjust once engine play legal chess
-*/
+};
 
-/*Mobility - centipawns per reachable square, per piece type*/
-#define MOB_KNIGHT 4
-#define MOB_BISHOP 5
-#define MOB_ROOK 3
-#define MOB_Queen 2
-#define MOB_ANTEATER 1
+static const int PST_KNIGHT[8][10] ={
+    {  0,-50, -40, -30, -30, -30, -30, -40, -50,  0 },
+    {  0,-40, -20,   0,   5,   5,   0, -20, -40,  0 },
+    {  0,-30,   0,  10,  15,  15,  10,   0, -30,  0 },
+    {  0,-30,   5,  15,  20,  20,  15,   5, -30,  0 },
+    {  0,-30,   5,  15,  20,  20,  15,   5, -30,  0 },
+    {  0,-30,   0,  10,  15,  15,  10,   0, -30,  0 },
+    {  0,-40, -20,   0,   5,   5,   0, -20, -40,  0 },
+    {  0,-50, -40, -30, -30, -30, -30, -40, -50,  0 }
+};
+
+static const int PST_BISHOP[8][10] ={
+    {  0,-20, -10, -10, -10, -10, -10, -10, -20,  0 },
+    {  0,-10,   5,   0,   0,   0,   0,   5, -10,  0 },
+    {  0,-10,  10,  10,  10,  10,  10,  10, -10,  0 },
+    {  0,-10,   0,  10,  10,  10,  10,   0, -10,  0 },
+    {  0,-10,   0,  10,  10,  10,  10,   0, -10,  0 },
+    {  0,-10,  10,  10,  10,  10,  10,  10, -10,  0 },
+    {  0,-10,   5,   0,   0,   0,   0,   5, -10,  0 },
+    {  0,-20, -10, -10, -10, -10, -10, -10, -20,  0 }
+};
+
+static const int PST_ROOK[8][10] ={
+    {  0,  0,  -5,  -5,  -5,  -5,  -5,   5,   0,  0 },
+    {  0,  0,   0,   0,   0,   0,   0,  10,   0,  0 },
+    {  0,  0,   0,   0,   0,   0,   0,  10,   0,  0 },
+    {  0,  5,   0,   0,   0,   0,   0,  10,   0,  0 },
+    {  0,  5,   0,   0,   0,   0,   0,  10,   0,  0 },
+    {  0,  0,   0,   0,   0,   0,   0,  10,   0,  0 },
+    {  0,  0,   0,   0,   0,   0,   0,  10,   0,  0 },
+    {  0,  0,  -5,  -5,  -5,  -5,  -5,   5,   0,  0 }
+};
+
+static const int PST_QUEEN[8][10]={
+    {  0,-20, -10, -10,  -5,  -5, -10, -10, -20,  0 },
+    {  0,-10,   0,   5,   0,   0,   0,   0, -10,  0 },
+    {  0,-10,   5,   5,   5,   5,   5,   0, -10,  0 },
+    {  0,  0,   0,   5,   5,   5,   5,   0,  -5,  0 },
+    {  0, -5,   0,   5,   5,   5,   5,   0,  -5,  0 },
+    {  0,-10,   0,   5,   5,   5,   5,   0, -10,  0 },
+    {  0,-10,   0,   0,   0,   0,   0,   0, -10,  0 },
+    {  0,-20, -10, -10,  -5,  -5, -10, -10, -20,  0 }
+
+};
+
+static const int PST_KING[8][10]={
+    {  0, 20,  30,  10,   0,   0,  10,  30,  20,  0 },
+    {  0, 20,  20,   0,   0,   0,   0,  20,  20,  0 },
+    {  0,-10, -20, -20, -20, -20, -20, -20, -10,  0 },
+    {  0,-20, -30, -30, -40, -40, -30, -30, -20,  0 },
+    {  0,-20, -30, -30, -40, -40, -30, -30, -20,  0 },
+    {  0,-10, -20, -20, -20, -20, -20, -20, -10,  0 },
+    {  0, 20,  20,   0,   0,   0,   0,  20,  20,  0 },
+    {  0, 20,  30,  10,   0,   0,  10,  30,  20,  0 }
+};
+
+static const int PST_ANTEATER[8][10]={
+    {  0,  0,  -5,  -5,  -5,  -5,  -5,  -5,   0,  0 },
+    {  0, -5,   5,  10,  10,  10,  10,   5,  -5,  0 },
+    {  0, -5,  10,  15,  15,  15,  15,  10,  -5,  0 },
+    {  0, -5,  10,  15,  20,  20,  15,  10,  -5,  0 },
+    {  0, -5,  10,  15,  20,  20,  15,  10,  -5,  0 },
+    {  0, -5,  10,  15,  15,  15,  15,  10,  -5,  0 },
+    {  0, -5,   5,  10,  10,  10,  10,   5,  -5,  0 },
+    {  0,  0,  -5,  -5,  -5,  -5,  -5,  -5,   0,  0 }
+};
+
+/*PST TABLE*/
+static const int* PST_TABLE[8]={
+    EMPTY, //EMPTY
+    EMPTY, //KING
+    (const int*) PST_QUEEN, 
+    (const int*) PST_ANTEATER,
+    (const int*) PST_BISHOP,
+    (const int*) PST_KNIGHT,
+    (const int*) PST_ROOK,
+    (const int*) PST_ANT
+};
+
+/*MOBILITY WEIGHTS*/
+#define MOB_KNIGHT 3
+#define MOB_BISHOP 3
+#define MOB_ROOK 5
+#define MOB_QUEEN 9
+#define MOB_ANTEATER 2
+#define MOB_ANT 1
+
+/*MOBILITY WEIGHTS ARRAY*/
+static const int MOB_WEIGHTS[8]={
+    0,
+    0,
+    MOB_QUEEN,
+    MOB_ANTEATER,
+    MOB_BISHOP,
+    MOB_KNIGHT,
+    MOB_ROOK,
+    MOB_ANT
+};
+
 
 /*Pawn structure penalties*/
 #define DOUBLED_ANT_PENALTY 20
 #define ISOLATED_ANT_PENALTY 20
-
 /*King Safety - shield penalities*/
 #define SHIELD_MISSING 15
 #define SHIELD_PUSHED 7
-
 /*Anteater bonus per adjacent enemy ant*/
 #define ANTEATER_ADJ_BONUS 30
 
 
-/*Function Declarations*/
-
+/*FUNCTION DECLARATION*/
 // Master evalution function - called by negamax
-int evaluate(/*defined Board struct*/);
+int evaluate(GameState *gs);
 //counts the raw piece values on the board
-int evalMaterial(/*defined Board struct*/);
+int evalMaterial(GameState *gs);
 //adds positional bonuses from Piece-Square Tables
-int evalPST(/*defined Board struct*/);
-
+int evalPST(GameState *gs);
 //counts reachable squares for each piece (excluding pawns and kings)
-int evalMobility(/*defined Board struct*/);
-
+int evalMobility(GameState *gs);
 //evaluates passed, doubled, and isolated pawns
-int evalPawnStructure(/*defined Board Struct*/);
-
+int evalPawnStructure(GameState *gs);
 //penalises each king based on potential attack in 3x3 zone & missing or advanced pawns in pawn shield
-int evalKingSafety(/*defined Board Struct*/);
-
+int evalKingSafety(GameState *gs);
 //evaluates anteater piece - bonus for multi-capture potential & penalty if piece is idle
-int evalAnteater(/*defined Board Struct*/);
-/*
-Returns 1 if the piece on square 'from' can attack
-square 'to' given the current board occupancy.
-Returns 0 otherwise.
-*/
-int canAttackSquare(/*defined Board Struct, int from, int to*/);
-
-
+int evalAnteater(GameState *gs);
+/*Returns 1 if the piece on square 'from' can attack square 'to' given the current board occupancy.Returns 0 otherwise.*/
+int canAttackSquare(GameState *gs, int fa, int ra, int fb, int rb);
 
 #endif
