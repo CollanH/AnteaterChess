@@ -208,6 +208,7 @@ void displayBoard(GameState *gs, int yellowSecs, int blueSecs, Color humanColor)
         printf("  u = undo available]\n");
 }
 
+//prints all legal destination for piece the player selected 
 void dispLegalMoves(MoveList *moves) {
     if (moves -> count ==0) {
         printf("  No legal moves for this piece.\n");
