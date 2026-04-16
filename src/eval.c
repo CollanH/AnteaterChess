@@ -1,7 +1,7 @@
 #include "eval.h"
 #include "chess_types.h"
-#include "stdlib.h" // for testing & debugging
-#include "stdio.h" // for testing & debugging
+//#include "stdlib.h" for testing & debugging
+//#include "stdio.h" for testing & debugging
 
 /*HELPER FUNCTIONS DECLARATIONS*/
 int isClear(GameState *gs, int fa, int ra, int fb, int rb);
@@ -235,25 +235,25 @@ int evaluate(GameState *gs){
     int score = 0;
 
     int material = evalMaterial(gs);
-    printf("Material: %d\n", material); fflush(stdout);
+    //printf("Material: %d\n", material); fflush(stdout);
 
     int pst = evalPST(gs);
-    printf("PST: %d\n", pst); fflush(stdout);
+    //printf("PST: %d\n", pst); fflush(stdout);
 
     int mobility = evalMobility(gs);
-    printf("Mobility: %d\n", mobility); fflush(stdout);
+    //printf("Mobility: %d\n", mobility); fflush(stdout);
 
     int king = evalKingSafety(gs);
-    printf("KingSafety: %d\n", king); fflush(stdout);
+    //printf("KingSafety: %d\n", king); fflush(stdout);
 
     int pawn = evalPawnStructure(gs);
-    printf("PawnStruct: %d\n", pawn); fflush(stdout);
+    //printf("PawnStruct: %d\n", pawn); fflush(stdout);
 
     int anteater = evalAnteater(gs);
-    printf("Anteater: %d\n", anteater); fflush(stdout);
+    //printf("Anteater: %d\n", anteater); fflush(stdout);
 
     score = material + pst + mobility + king + pawn + anteater;
-    printf("TOTAL: %d\n", score); fflush(stdout);
+    //printf("TOTAL: %d\n", score); fflush(stdout);
 
     return score;
 }
