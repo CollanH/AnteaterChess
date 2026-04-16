@@ -5,9 +5,9 @@
 GameState testState;
 
 void display(void) {
-    glClear(GL_COLOR_BUFFER_BIT);
-    displayBoard(&testState, 300, 300, YELLOW);
-    glutSwapBuffers();
+glClear(GL_COLOR_BUFFER_BIT);
+dispUndo();
+glutSwapBuffers();
 }
 
 void initGL(void) {
