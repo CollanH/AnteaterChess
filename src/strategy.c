@@ -1,170 +1,214 @@
 #include "strategy.h"
 #include <stdlib.h>
 
-//provided by eval.c - scores position relative to side to move
+//eval.c gives us this - scores the board for whoever's turn it is
 int evaluate(GameState *gs);
 
-//provided by legalMoveGen.c - checks if color's king is under attack
+//legalMoveGen.c gives us this - checks if a color's king is in check
 bool inCheck(GameState *gs, Color color);
 
-//large value used to represent checkmate score
+//big number to represent checkmate (basically infinity)
 #define INF 1000000
 
-//internal helper declarations
-static GameState apply_move(const GameState *gs, Move move);
+//negamax is only used inside this file
 static int negamax(GameState *gs, int depth, int alpha, int beta);
 
-//applies move to a copy of gs and returns the new gamestate
-//does not modify the original gs - negamax needs it intact for backtracking
-static GameState apply_move(const GameState *gs, Move move)
+//takes the current board and a move, returns what the board looks like after that move
+//never touches the original board - negamax needs it unchanged to keep searching
+GameState apply_move(const GameState *gs, Move move)
 {
-    //copy gs and perform the basic piece movement
-    //make_move handles: place piece at to, clear from, capture whatever is at to
-    GameState next = make_move(gs, move);
+    GameState nextState;
+    Square from;
+    Square to;
+    PieceType movedPiece;
+    Color currentTurn;
+    int rankDistance;
+    int fileDistance;
+    int direction;
+    int fileIdx;
+    int rankIdx;
 
-    Square from = move.from;
-    Square to   = move.to;
+    //do the basic move - pick up the piece, place it at the destination, clear where it was
+    nextState = make_move(gs, move);
 
-    //identifying what piece just moved
-    PieceType moved = gs->board[from.rank][from.file].piecetype;
-    Color     side  = gs->turn;
+    from = move.from;
+    to   = move.to;
 
-    //handling anteater chain capture
-    //if anteater moved more than one step along a rank or file,
-    //all enemy ants between from and to must be cleared
-    if (moved == ANTEATER)
+    //figure out what piece moved and whose turn it was
+    movedPiece  = gs->board[from.rank][from.file].piecetype;
+    currentTurn = gs->turn;
+
+    //anteater special rule - if it moved more than one square along a rank or file,
+    //all the ants it ran through in between get eaten too
+    if (movedPiece == ANTEATER)
     {
-        int dr = to.rank - from.rank;
-        int df = to.file - from.file;
+        rankDistance = to.rank - from.rank;
+        fileDistance = to.file - from.file;
 
-        //chain along same rank (horizontal move, more than one step)
-        if (dr == 0 && (df > 1 || df < -1))
+        //moved horizontally more than one square - eat ants along the rank
+        if (rankDistance == 0 && (fileDistance > 1 || fileDistance < -1))
         {
-            int step = (df > 0) ? 1 : -1;
-            for (int f = from.file + step; f != to.file; f += step)
-                next.board[from.rank][f] = (Piece){EMPTY, YELLOW};
+            if (fileDistance > 0)
+            {
+                direction = 1;
+            }
+            else
+            {
+                direction = -1;
+            }
+
+            for (fileIdx = from.file + direction; fileIdx != to.file; fileIdx += direction)
+            {
+                nextState.board[from.rank][fileIdx] = (Piece){EMPTY, YELLOW};
+            }
         }
 
-        //chain along same file (vertical move, more than one step)
-        if (df == 0 && (dr > 1 || dr < -1))
+        //moved vertically more than one square - eat ants along the file
+        if (fileDistance == 0 && (rankDistance > 1 || rankDistance < -1))
         {
-            int step = (dr > 0) ? 1 : -1;
-            for (int r = from.rank + step; r != to.rank; r += step)
-                next.board[r][from.file] = (Piece){EMPTY, YELLOW};
+            if (rankDistance > 0)
+            {
+                direction = 1;
+            }
+            else
+            {
+                direction = -1;
+            }
+
+            for (rankIdx = from.rank + direction; rankIdx != to.rank; rankIdx += direction)
+            {
+                nextState.board[rankIdx][from.file] = (Piece){EMPTY, YELLOW};
+            }
         }
 
-        next.anteater_ate = true;
+        nextState.anteater_ate = true;
     }
     else
     {
-        next.anteater_ate = false;
+        nextState.anteater_ate = false;
     }
 
-    //handling en passant capture
-    //an ant captures diagonally to an empty square matching en_passant_square
-    //the captured ant sits on the same rank as the attacker, same file as destination
-    if (moved == ANT)
+    //en passant - ant moved diagonally to an empty square
+    //the captured ant isnt at the destination, its sitting beside the attacker
+    //so we have to manually remove it
+    if (movedPiece == ANT)
     {
-        int df = to.file - from.file;
+        fileDistance = to.file - from.file;
 
-        //diagonal move to empty square means en passant
-        if (df != 0 && gs->board[to.rank][to.file].piecetype == EMPTY)
-            next.board[from.rank][to.file] = (Piece){EMPTY, YELLOW};
-    }
-
-    //updating en passant square for next turn
-    //only set if an ant just double pushed, otherwise clear it
-    next.en_passant_square.rank = -1;
-    next.en_passant_square.file = A;
-
-    if (moved == ANT)
-    {
-        int dr = to.rank - from.rank;
-
-        //yellow ants double push from rank 6 downward (rank decreases)
-        //blue ants double push from rank 1 upward (rank increases)
-        if (dr == -2 || dr == 2)
+        //moved diagonally to empty square = en passant, remove the ant that got bypassed
+        if (fileDistance != 0 && gs->board[to.rank][to.file].piecetype == EMPTY)
         {
-            next.en_passant_square.rank = (from.rank + to.rank) / 2;
-            next.en_passant_square.file = from.file;
+            nextState.board[from.rank][to.file] = (Piece){EMPTY, YELLOW};
         }
     }
 
-    //handling ant promotion
-    //yellow ants promote at rank 0, blue ants promote at rank 7
-    if (moved == ANT && (to.rank == 0 || to.rank == 7))
+    //reset en passant square every turn - its only valid for one turn
+    nextState.en_passant_square.rank = -1;
+    nextState.en_passant_square.file = A;
+
+    //if an ant just double pushed, set the square it skipped over
+    //so legalMoveGen knows en passant is available next turn
+    if (movedPiece == ANT)
     {
-        next.board[to.rank][to.file].piecetype = QUEEN;
-    }
-        
-    //updating castling flags if king moved
-    //once the king moves, castling is no longer available for that side
-    if (moved == KING)
-    {
-        if (side == YELLOW)
+        rankDistance = to.rank - from.rank;
+
+        if (rankDistance == -2 || rankDistance == 2)
         {
-            next.yellow_castled = true;
+            nextState.en_passant_square.rank = (from.rank + to.rank) / 2;
+            nextState.en_passant_square.file = from.file;
+        }
+    }
+
+    //ant reached the back rank - promote it to queen
+    if (movedPiece == ANT && (to.rank == 0 || to.rank == 7))
+    {
+        nextState.board[to.rank][to.file].piecetype = QUEEN;
+    }
+
+    //king moved - that side can never castle again, flag it
+    if (movedPiece == KING)
+    {
+        if (currentTurn == YELLOW)
+        {
+            nextState.yellow_castled = true;
         }
         else
         {
-            next.blue_castled   = true;
-        }                
+            nextState.blue_castled = true;
+        }
     }
-    //flipping turn - after a move it is the other player's turn
-    next.turn = (side == YELLOW) ? BLUE : YELLOW;
 
-    return next;
+    //move is done, flip whose turn it is
+    if (currentTurn == YELLOW)
+    {
+        nextState.turn = BLUE;
+    }
+    else
+    {
+        nextState.turn = YELLOW;
+    }
+
+    return nextState;
 }
 
-//recursive negamax search with alpha-beta pruning
-//returns a score relative to the side to move
-//positive = side to move is winning, negative = losing
+//the actual AI search - tries every move and picks the best one
+//score is always from the perspective of whoever is moving right now
+//positive = winning, negative = losing
 static int negamax(GameState *gs, int depth, int alpha, int beta)
 {
-    //base case - depth reached, score the position as-is
+    MoveList moves;
+    int best;
+    int i;
+    GameState next;
+    int score;
+
+    //hit the depth limit - just score the board as is and stop searching
     if (depth == 0)
     {
         return evaluate(gs);
     }
-        
-    //generating all legal moves for the current side
-    MoveList moves = legalMoveGen(gs);
 
-    //no legal moves means checkmate or stalemate
+    //get all legal moves for whoever's turn it is
+    moves = legalMoveGen(gs);
+
+    //no moves means its either checkmate or stalemate
     if (moves.count == 0)
     {
-        //checkmate - current side has no moves and is in check, very bad
-        if (inCheck(gs, gs->turn)) return -INF;
+        //in check with no moves = checkmate, worst possible outcome
+        if (inCheck(gs, gs->turn))
+        {
+            return -INF;
+        }
 
-        //stalemate - no moves but not in check, draw
+        //not in check with no moves = stalemate, its a draw
         return 0;
     }
 
-    int best = -INF;
+    best = -INF;
 
-    for (int i = 0; i < moves.count; i++)
+    for (i = 0; i < moves.count; i++)
     {
-        //applying the move to get the resulting board state
-        GameState next = apply_move(gs, moves.moves[i]);
+        //apply this move to get the resulting board
+        next = apply_move(gs, moves.moves[i]);
 
-        //recursing - negate the result because after the move
-        //it is the opponent's turn and their best is our worst
-        int score = -negamax(&next, depth - 1, -beta, -alpha);
+        //recurse - but negate the score because its the opponents turn now
+        //what is good for them is bad for us
+        score = -negamax(&next, depth - 1, -beta, -alpha);
 
-        //tracking the best score found so far
+        //keep track of the best score we found so far
         if (score > best)
         {
             best = score;
         }
-        
-        //updating alpha - best score we can guarantee from here
+
+        //alpha is the best we are guaranteed to get from here
         if (score > alpha)
         {
             alpha = score;
         }
-            
-        //beta cutoff - opponent already has a better option elsewhere
-        //no point searching further, they will never let us reach this branch
+
+        //alpha >= beta means the opponent already has a better option elsewhere
+        //they would never let us reach this position so stop searching it
         if (alpha >= beta)
         {
             break;
@@ -174,41 +218,51 @@ static int negamax(GameState *gs, int depth, int alpha, int beta)
     return best;
 }
 
-//selects the best move for the AI player
-//iterates over all legal moves, scores each with negamax, returns the best
+//entry point - finds and returns the best move for the AI to play
 Move* SelectBestMove(GameState *gs, Color color, int depth)
 {
+    MoveList moves;
+    static Move best_move;
+    int best_score;
+    int alpha;
+    int beta;
+    int i;
+    GameState next;
+    int score;
+
     (void)color;
 
-    //generating all legal moves for the current position
-    MoveList moves = legalMoveGen(gs);
+    //get all legal moves for the current position
+    moves = legalMoveGen(gs);
 
-    //no legal moves means checkmate or stalemate, nothing to return
-    if (moves.count == 0) return NULL;
-
-    static Move best_move;
-    int best_score = -INF;
-    int alpha      = -INF;
-    int beta       =  INF;
-
-    for (int i = 0; i < moves.count; i++)
+    //no moves means checkmate or stalemate - nothing to return
+    if (moves.count == 0)
     {
-        //applying each move to get the resulting board state
-        GameState next = apply_move(gs, moves.moves[i]);
+        return NULL;
+    }
 
-        //scoring the resulting position from the opponent's perspective
-        //negated because negamax returns score for the side to move (opponent)
-        int score = -negamax(&next, depth - 1, -beta, -alpha);
+    best_score = -INF;
+    alpha      = -INF;
+    beta       =  INF;
 
-        //keeping track of the highest scoring move seen so far
+    for (i = 0; i < moves.count; i++)
+    {
+        //apply the move and score the resulting position
+        next = apply_move(gs, moves.moves[i]);
+
+        //negated because negamax scores from the opponents perspective after our move
+        score = -negamax(&next, depth - 1, -beta, -alpha);
+
+        //if this move scored higher than anything we've seen, save it
         if (score > best_score)
         {
             best_score = score;
             best_move  = moves.moves[i];
 
-            //updating alpha so negamax can prune in subsequent calls
             if (score > alpha)
+            {
                 alpha = score;
+            }
         }
     }
 
