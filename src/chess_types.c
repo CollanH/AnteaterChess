@@ -5,17 +5,19 @@ Square make_square(int rank, File file){
 	Square sq;
 	sq.file = file;
 	sq.rank = rank;
+	return sq;
 }
 
 MoveList initialize_moveList(){
 	MoveList mv;
 	memset(&mv.moves, 0, sizeof(mv.moves));
 	mv.count = 0;
+	return mv;
 }
 
 void append_move(MoveList* moveList, Move move){
-	*moveList_at(moveList, moveList->count) = move;
-	moveList->count++;
+	if(moveList->count < 250)
+ 		moveList->moves[moveList->count++] = move;
 }
 
 void delete_move(MoveList* moveList, int index){
