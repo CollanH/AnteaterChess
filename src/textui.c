@@ -10,7 +10,7 @@
 #include "textui.h"
 
 #define BOARD_ROWS 8
-#define BOARD_COLS 8
+#define BOARD_COLS 10
 
 
 
@@ -141,13 +141,13 @@ int clockMenu(void) {
 
 
 //puts full board to the terminal
-void displayBoard(Gamestate *gs, int yellowSecs, int blueSecs, Color humanColor) {
+void displayBoard(GameState *gs, int yellowSecs, int blueSecs, Color humanColor) {
     printf("\n");
     //printing labels on top of board
     for (int c = 0; c< BOARD_COLS; c++)
         printf(" %c  ", filetoChar((File)c));
     printf("\n");
-    hline();
+    hLine();
 
     //printing each row
     for (int row = 0; row < BOARD_ROWS; row++) {
@@ -161,11 +161,200 @@ void displayBoard(Gamestate *gs, int yellowSecs, int blueSecs, Color humanColor)
         }
 
         //print clocks next to rank 8 and rank 1
-
+        if (rankNum == 8)
+            printf("   Blue  : %d:%02d", blueSecs/60, blueSecs%60);
+        if (rankNum == 1)
+            printf("   Yellow: %d:%02d", yellowSecs/60, yellowSecs%60);
+        printf("\n");
+        hLine();
     }
 
+    //printing labels across the bottom
+    printf("    ");
+    for (int c = 0; c < BOARD_COLS; c++)
+        printf(" %c  ", filetoChar((File)c));
+    printf("\n");
+
+    //printing legend so that each letter is known
+    printf("\n  Pieces (UPPER=Yellow / lower=Blue):\n");
+    printf("  K/k=King  Q/q=Queen  R/r=Rook  B/b=Bishop\n");
+    printf("  N/n=Knight  P/p=Ant  T/t=Anteater  .=Empty\n");
+
+    //printing whose turn it is
+    const char *turnName = (gs->turn == YELLOW) ? "YELLOW" : "BLUE";
+    printf("\n >> %s to move.", turnName);
+    if (gs->turn == humanColor)
+        printf("  (your turn)");
+    printf("\n");
+
+    //printing if castling is allowed for either player
+    printf("  Castling -- Yellow: %s Blue: %s\n",
+        gs->yellow_castled ? "done" : "available",
+        gs->blue_castled ? "done" : "available");
+
+    //printing en passant square if one is currently active, if rank ==0: no en passant
+    if (gs->en_passant_square.rank != 0) {
+        char buf[4];
+        squaretoString(gs->en_passant_square, buf);
+        printf("  En passant square: %s\n", buf);
+    }
+
+    //printing anteater capture if the anteater just ate
+    if (gs->anteater_ate)
+        printf("  [Anteater chain capture in progress]\n");
+
+    //printing if there is an undo
+    if (gs->prev_state != NULL)
+        printf("  u = undo available]\n");
 }
 
+//prints all legal destination for piece the player selected 
+void dispLegalMoves(MoveList *moves) {
+    if (moves -> count ==0) {
+        printf("  No legal moves for this piece.\n");
+        return;
+    }
+
+    printf("  Legal destinations: ");
+    for (int i = 0; i < moves->count; i++) {
+        char buf[4];
+        squaretoString(moves->moves[i].to, buf);
+        printf("%s", buf);
+        if (i < moves->count - 1)
+            printf(", ");
+    }
+
+    printf("\n");
+}
+
+//returns a Move after reading command from player
+Move getMove(GameState *gs) {
+    Move result;
+    memset(&result, 0, sizeof(result));
+    char input[64];
+    char fromTok[8], toTok[8];
+
+    const char *turnName = (gs->turn == YELLOW) ? "YELLOW" : "BLUE";
+    printf("\n [%s] Enter move (e.g. F2 F4) or u = undo, h = help, q = quit: ", turnName);
+    fflush(stdout);
+
+    //fgets reads line and returns NULL if input error
+    if (!fgets(input, sizeof(input), stdin)) {
+        result.from.file = (File)TUI_CMD_QUIT;
+        return result;
+    }
+
+    //removing newline fgets adds at end
+    input[strcspn(input, "\n")] = 0;
+
+    //skip spaces the player typed before command
+    char *trimmed = input;
+    while (*trimmed == ' ') trimmed++;
+
+    //checking for single character
+    if (strlen(trimmed) == 1) {
+        char cmd = (char)tolower((unsigned char)trimmed[0]);
+        if (cmd == 'u') {
+            result.from.file = (File)TUI_CMD_UNDO;
+            return result;
+        }
+        if (cmd == 'q') {
+            result.from.file = (File)TUI_CMD_QUIT;
+            return result;
+        }
+        if (cmd == 'h') {
+            result.from.file = (File)TUI_CMD_HELP;
+            return result;
+        }
+    }   
+
+
+    //parse move in format of F2 F4
+    if (sscanf(trimmed, "%7s %7s", fromTok, toTok) == 2) {
+        int fromFile = chartoFile(fromTok[0]);
+        int fromRank = fromTok[1] - '0';
+        int toFile = chartoFile(toTok[0]);
+        int toRank = toTok[1] - '0';
+
+        if (fromFile >= 0 && fromRank >= 1 && fromRank <= 8 && toFile >= 0 && toRank >= 8) {
+            result.from.file= (File)fromFile;
+            result.from.rank = fromRank;
+            result.to.file= (File)toFile;
+            result.to.rank = toRank;
+            return result;
+        }
+    }
+
+    //nothing matches
+    printError("Unrecognised input. Type h for help.");
+    result.from.file = (File)TUI_CMD_HELP;
+    return result;
+}
+
+//prints victory banner when checkmate found
+void dispWin(Color winner) {
+    const char *w = (winner == YELLOW) ? "YELLOW" : "BLUE";
+    const char *l = (winner == YELLOW) ? "Blue" : "Yellow";
+    printf("\n  +------------------------------+\n");
+    printf(  "  | %s checkmated!               \n", l);
+    printf(  "  | %s WINS!                    |\n", w);
+    printf(  "  +------------------------------+\n\n");
+}
+
+//printing stalemate menu if draw detected
+void dispStalemate(void) {
+    printf("\n  +------------------------------+\n");
+    printf(  "  |      STALEMATE -- DRAW!      |\n");
+    printf(  "  |  No legal moves remaining.   |\n");
+    printf(  "  +------------------------------+\n");
+}
+
+//prints timeout banner if player's clock hits 0
+void dispTimeout(Color loser) {
+    const char *l = (loser == YELLOW) ? "Yellow" : "Blue";
+    const char *w = (loser == YELLOW) ? "BLUE" : "YELLOW";
+    printf("\n +------------------------------+\n");
+    printf(  " |  %s timed out!               \n", l);
+    printf(  " |  %s WINS!                   |\n", w);
+    printf(  " +------------------------------+\n\n");
+}
+
+//prints the move the ai just played
+void aiMove(Move move) {
+    char fromBuf[4], toBuf[4];
+    squaretoString(move.from, fromBuf);
+    squaretoString(move.to, toBuf);
+    printf("  AI played: %s %s\n", fromBuf, toBuf);
+}
+
+//prints error message
+void printError(const char *msg) {
+    printf("  [!] %s\n", msg);
+}
+
+//prints command reference card for player
+void printHelp(void) {
+    printf("\n  --- HOW TO MOVE ----------------------------------------\n");
+    printf("  Type the square your piece is on, then the square\n");
+    printf("  you want to move it to, separated by a space.\n");
+    printf("  Example:  F2 F4  moves the piece at F2 to F4\n");
+    printf("  --------------------------------------------------------\n");
+    printf("  COMMANDS:\n");
+    printf("  <File><Rank> <File><Rank>   Move a piece, e.g. F2 F4\n");
+    printf("  u                           Undo last move\n");
+    printf("  h                           Show this help\n");
+    printf("  q                           Quit the game\n");
+    printf("  --------------------------------------------------------\n");
+    printf("  FILE (column) : A B C D E F G H I J  (left to right)\n");
+    printf("  RANK (row)    : 1-8                  (bottom to top)\n");
+    printf("  --------------------------------------------------------\n");
+    printf("  PIECES  (UPPER = Yellow   lower = Blue)\n");
+    printf("  K/k  King        Q/q  Queen\n");
+    printf("  R/r  Rook        B/b  Bishop\n");
+    printf("  N/n  Knight      P/p  Ant (Pawn)\n");
+    printf("  T/t  Anteater    .    Empty square\n");
+    printf("  --------------------------------------------------------\n\n");
+}
 
 
 
