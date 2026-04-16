@@ -127,16 +127,39 @@ static const int MOB_WEIGHTS[8]={
     MOB_ANT
 };
 
+/*ATTACK PRESSURE*/
+static const int ATTACKER_WEIGHT[8]={
+    0,
+    0,
+    5,
+    0,
+    2,
+    2,
+    3,
+    0
+};
 
 /*Pawn structure penalties*/
 #define DOUBLED_ANT_PENALTY 20
 #define ISOLATED_ANT_PENALTY 20
 /*King Safety - shield penalities*/
-#define SHIELD_MISSING 15
-#define SHIELD_PUSHED 7
+#define SHIELD_MISSING 5
+#define SHIELD_PUSHED 2
 /*Anteater bonus per adjacent enemy ant*/
-#define ANTEATER_ADJ_BONUS 30
+#define ANTEATER_ADJ_BONUS 10
 
+static const int DANGER_TABLE[100] = {
+   0,  0,  1,  2,  3,  5,  7, 10, 14, 20,
+   28, 37, 49, 64, 82,101,128,160,196,240,
+   280,320,360,400,440,480,512,512,512,512,
+   512,512,512,512,512,512,512,512,512,512,
+   512,512,512,512,512,512,512,512,512,512,
+   512,512,512,512,512,512,512,512,512,512,
+   512,512,512,512,512,512,512,512,512,512,
+   512,512,512,512,512,512,512,512,512,512,
+   512,512,512,512,512,512,512,512,512,512,
+   512,512,512,512,512,512,512,512,512,512
+};
 
 /*FUNCTION DECLARATION*/
 // Master evalution function - called by negamax
