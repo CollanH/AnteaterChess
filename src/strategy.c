@@ -4,13 +4,13 @@
 #include <time.h>
 
 //legalMoveGen.c gives us this, not exported in legalMoveGen.h
-bool inCheck(GameState *gs, Color color);
+bool inCheck(const GameState *gs, Color color);
 
 //big number to represent checkmate (basically infinity)
 #define INF 1000000
 
-//time limit for iterative deepening, stop searching at 50 seconds
-#define TIME_LIMIT_SECS 50
+//time limit for iterative deepening, stop searching at 5 seconds
+#define TIME_LIMIT_SECS 5
 
 //internal function declarations
 static int negamax(GameState *gs, int depth, int alpha, int beta);
@@ -38,8 +38,11 @@ GameState apply_move(const GameState *gs, Move move)
     int fileIdx;
     int rankIdx;
 
-    //do the basic move - pick up the piece, place it at the destination, clear where it was
-    nextState = make_move(gs, move);
+    //stack copy for search tree, no malloc - make_move in chess_types is heap based (for GUI)
+    nextState              = *gs;
+    nextState.prev_state   = NULL;
+    replace_piece(&nextState, *piece_at(gs, move.from), move.to);
+    replace_piece(&nextState, make_piece(EMPTY, YELLOW), move.from);
 
     from = move.from;
     to   = move.to;
@@ -135,16 +138,18 @@ GameState apply_move(const GameState *gs, Move move)
         nextState.board[to.rank][to.file].piecetype = QUEEN;
     }
 
-    //king moved, that side can never castle again
+    //king moved, revoke both castling rights for that side
     if (movedPiece == KING)
     {
         if (currentTurn == YELLOW)
         {
-            nextState.yellow_castled = true;
+            nextState.yellow_kscastle = false;
+            nextState.yellow_qscastle = false;
         }
         else
         {
-            nextState.blue_castled = true;
+            nextState.blue_kscastle = false;
+            nextState.blue_qscastle = false;
         }
     }
 
@@ -248,7 +253,6 @@ Move* SelectBestMove(GameState *gs, Color color, int depth)
     double elapsed;
 
     (void)color;
-    (void)depth;
 
     //get all legal moves for the current position
     moves = legalMoveGen(gs);
@@ -264,9 +268,8 @@ Move* SelectBestMove(GameState *gs, Color color, int depth)
 
     //TODO: call sort_moves here once implemented
 
-    //iterative deepening - search deeper and deeper until time runs out
-    //even depths only to keep search symmetric for both sides
-    for (current_depth = 2; current_depth <= 20; current_depth += 2)
+    //iterative deepening up to the requested depth, stops early if time runs out
+    for (current_depth = 2; current_depth <= depth; current_depth += 2)
     {
         //check time before starting a new depth
         elapsed = (double)(clock() - start) / CLOCKS_PER_SEC;

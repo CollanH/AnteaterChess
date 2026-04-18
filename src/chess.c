@@ -10,7 +10,7 @@
 void logMove(FILE *logfile, Color color, Move move);
 void init_board(GameState *gs);
 bool is_legal(MoveList *moves, Move move);
-bool inCheck(GameState *gs, Color color);
+bool inCheck(const GameState *gs, Color color);
 
 int main()
 {
@@ -254,13 +254,14 @@ void init_board(GameState *gs)
     gs->board[7][I] = (Piece){KNIGHT,   YELLOW};
     gs->board[7][J] = (Piece){ROOK,     YELLOW};
 
-    gs->turn                   = YELLOW;
-    gs->yellow_castled         = false;
-    gs->blue_castled           = false;
-    gs->anteater_ate           = false;
-    gs->en_passant_square.rank = -1;
-    gs->en_passant_square.file = A;
-    gs->prev_state             = NULL;
+    gs->turn               = YELLOW;
+    gs->yellow_kscastle    = true;
+    gs->yellow_qscastle    = true;
+    gs->blue_kscastle      = true;
+    gs->blue_qscastle      = true;
+    gs->anteater_ate       = false;
+    gs->en_passant_square  = make_square(-1, A);
+    gs->prev_state         = NULL;
 }
 
 //validates typed input against the move list, only used in textChess
