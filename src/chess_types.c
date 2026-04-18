@@ -5,6 +5,7 @@ Square make_square(int rank, File file){
 	Square sq;
 	sq.file = file;
 	sq.rank = rank;
+
 	return sq;
 }
 
@@ -12,12 +13,13 @@ MoveList initialize_moveList(){
 	MoveList mv;
 	memset(&mv.moves, 0, sizeof(mv.moves));
 	mv.count = 0;
+
 	return mv;
 }
 
 void append_move(MoveList* moveList, Move move){
-	if(moveList->count < 250)
- 		moveList->moves[moveList->count++] = move;
+	*moveList_at(moveList, moveList->count) = move;
+	moveList->count++;
 }
 
 void delete_move(MoveList* moveList, int index){
@@ -26,7 +28,7 @@ void delete_move(MoveList* moveList, int index){
 }
 
 Move* moveList_at(MoveList* moveList, int index){
-	if(index >= moveList->count)
+	if(index > moveList->count)
 		return NULL;
 	return &(moveList->moves[index]);
 }
@@ -56,4 +58,26 @@ GameState make_move(const GameState* gs, Move move){
 
 	return new_gs;
 
+}
+
+GameState initalize_empty_GameState() {
+	GameState gs;
+	for(int i = 0; i < 8; i++){
+		for(int j = 0; j < 10; j++) {
+			gs.board[i][j] = make_piece(EMPTY, YELLOW);
+
+
+		}
+	}
+
+	gs.turn = YELLOW;
+	gs.anteater_ate = false;
+	gs.yellow_kscastle = true;
+	gs.yellow_qscastle = true;
+	gs.blue_kscastle = true;
+	gs.blue_qscastle = true;
+	gs.en_passant_square = make_square(-2,-1);
+	gs.prev_state = NULL;
+
+	return gs;
 }

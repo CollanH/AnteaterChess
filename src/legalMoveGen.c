@@ -14,7 +14,7 @@
  * returns true if the king of color is being attacked by an enemy piece
  * returns false otherwise
  */
-bool inCheck(GameState* gs, Color color);
+bool inCheck(const GameState* gs, Color color);
 void squareToMoves(const GameState *gs, Square square, MoveList* moveList);
 void kingMoves(const GameState *pState, Square square, MoveList *list);
 void anteaterMoves(const GameState *pState, Square square, MoveList *list);
@@ -24,14 +24,49 @@ void knightMoves(const GameState *pState, Square square, MoveList *list);
 void rookMoves(const GameState *pState, Square square, MoveList *list);
 void antMoves(const GameState *pState, Square square, MoveList *list);
 
+void clean_moveList(GameState *gs,MoveList* moveList) {
+	int count = 0;
+	int to_delete[250];
+	for(int i = 0; i < moveList->count; i++) {
+		Move* move = moveList_at(moveList, i);
+
+		if(piece_at(gs, move->to)->piecetype != EMPTY && piece_at(gs, move->to)->color == gs->turn) {
+			to_delete[count] = i;
+			count++;
+		}
+		else {
+			// make a move to check if it causes
+			Piece occupant = *piece_at(gs, move->to);
+			Piece mover = *piece_at(gs, move->from);
+
+			gs->board[move->to.rank][move->to.file] = mover;
+			gs->board[move->from.rank][move->from.file] = make_piece(EMPTY, YELLOW);
+			if(inCheck(gs, gs->turn)) {
+				to_delete[count] = i;
+				count++;
+			}
+			gs->board[move->to.rank][move->to.file] = occupant;
+			gs->board[move->from.rank][move->from.file] = mover;
+		}
+
+
+	}
+
+	for(int i = count - 1; i >= 0; i--) {
+		delete_move(moveList, to_delete[i]);
+	}
+
+}
+
 // returns movelist of moves based on a square
-MoveList findPossibleMoves(const GameState *gs, Square square) {
+MoveList findPossibleMoves(GameState *gs, Square square) {
 	MoveList moveList = initialize_moveList();
 	squareToMoves(gs, square, &moveList);
+	clean_moveList(gs, &moveList);
 
 	return moveList;
 }
-MoveList legalMoveGen(const GameState *gs) {
+MoveList legalMoveGen(GameState *gs) {
 	MoveList moveList = initialize_moveList();
 
 	Color turn = gs->turn;
@@ -41,6 +76,8 @@ MoveList legalMoveGen(const GameState *gs) {
 				squareToMoves(gs, make_square(i, (File)j), &moveList);
 		}
 	}
+
+	clean_moveList(gs, &moveList);
 
 	return moveList;
 
@@ -77,6 +114,8 @@ void squareToMoves(const GameState *gs, Square square, MoveList* moveList) {
 		default:
 			break;
 	}
+
+
 
 
 
@@ -323,7 +362,7 @@ bool king_check(const GameState* gs, Color color){
 
 	return false;
 }
-bool inCheck(GameState* gs, Color color){
+bool inCheck(const GameState* gs, Color color){
 	bool check = queen_bishop_rook_check(gs, color)
 			|| pawn_check(gs, color)
 			|| knight_check(gs, color)
@@ -336,30 +375,185 @@ bool inCheck(GameState* gs, Color color){
 }
 
 void kingMoves(const GameState *gs, Square square, MoveList* moveList){
+	int dr[8] = {-1, -1, -1, 0, 1, 1, 1, 0};
+	int df[8] = {-1,  0,  1, 1, 1, 0, -1, -1};
 
+	for (int i = 0; i < 8; i++) {
+		Square to = make_square(square.rank + dr[i], square.file + df[i]);
+		if(in_bounds(to)) {
+			Move move;
+			move.from = square;
+			move.to = to;
+			append_move(moveList, move);
+		}
+	}
 }
 
 
-void antMoves(const GameState *pState, Square square, MoveList *list) {
+void anteaterMoves(const GameState *gs, Square square, MoveList *list) {
+	Color myColor = piece_at(gs, square)->color;
 
+	int dr[8] = {-1, -1, -1, 0, 1, 1, 1, 0};
+	int df[8] = {-1,  0,  1, 1, 1, 0, -1, -1};
+
+	for (int i = 0; i < 8; i++) {
+		// if chaining, skip diagonal moves
+		if (gs->anteater_ate && dr[i] != 0 && df[i] != 0) {
+			continue;
+		}
+
+		Square to = make_square(square.rank + dr[i], square.file + df[i]);
+		if (!in_bounds(to)) {
+			continue;
+		}
+
+		Piece dest = *piece_at(gs, to);
+
+		if (gs->anteater_ate) {
+			// chain move: only capture enemy ants, no empty-square moves
+			if (dest.piecetype == ANT && dest.color != myColor) {
+				Move move;
+				move.from = square;
+				move.to = to;
+				append_move(list, move);
+			}
+		} else {
+			// normal move: can move to empty square
+			if (dest.piecetype == EMPTY) {
+				Move move;
+				move.from = square;
+				move.to = to;
+				append_move(list, move);
+			}
+			// or capture enemy ant
+			else if (dest.piecetype == ANT && dest.color != myColor) {
+				Move move;
+				move.from = square;
+				move.to = to;
+				append_move(list, move);
+			}
+		}
+	}
 }
-
 void rookMoves(const GameState *pState, Square square, MoveList *list) {
+	int dr[4] = {-1, 1, 0, 0};
+	int df[4] = {0, 0, -1, 1};
 
+	for (int dir = 0; dir < 4; dir++) {
+		Square to = make_square(square.rank + dr[dir], square.file + df[dir]);
+
+		while (in_bounds(to)) {
+			Move move;
+			move.from = square;
+			move.to = to;
+			append_move(list, move);
+
+			if (piece_at(pState, to)->piecetype != EMPTY) {
+				break;
+			}
+
+			to.rank += dr[dir];
+			to.file += df[dir];
+		}
+	}
 }
 
 void knightMoves(const GameState *pState, Square square, MoveList *list) {
+	int dr[8] = {-2, -2, -1, -1, 1, 1, 2, 2};
+	int df[8] = {-1,  1, -2,  2, -2, 2, -1, 1};
 
+	for (int i = 0; i < 8; i++) {
+		Square to = make_square(square.rank + dr[i], square.file + df[i]);
+		if (in_bounds(to)) {
+			Move move;
+			move.from = square;
+			move.to = to;
+			append_move(list, move);
+		}
+	}
 }
 
 void bishopMoves(const GameState *pState, Square square, MoveList *list) {
+	int dr[4] = {-1, -1, 1, 1};
+	int df[4] = {-1, 1, -1, 1};
 
+	for (int dir = 0; dir < 4; dir++) {
+		Square to = make_square(square.rank + dr[dir], square.file + df[dir]);
+
+		while (in_bounds(to)) {
+			Move move;
+			move.from = square;
+			move.to = to;
+			append_move(list, move);
+
+			if (piece_at(pState, to)->piecetype != EMPTY) {
+				break;
+			}
+
+			to.rank += dr[dir];
+			to.file += df[dir];
+		}
+	}
 }
 
 void queenMoves(const GameState *pState, Square square, MoveList *list) {
+	int dr[8] = {-1, -1, -1, 0, 1, 1, 1, 0};
+	int df[8] = {-1,  0,  1, 1, 1, 0, -1, -1};
 
+	for (int dir = 0; dir < 8; dir++) {
+		Square to = make_square(square.rank + dr[dir], square.file + df[dir]);
+
+		while (in_bounds(to)) {
+			Move move;
+			move.from = square;
+			move.to = to;
+			append_move(list, move);
+
+			if (piece_at(pState, to)->piecetype != EMPTY) {
+				break;
+			}
+
+			to.rank += dr[dir];
+			to.file += df[dir];
+		}
+	}
 }
 
-void anteaterMoves(const GameState *pState, Square square, MoveList *list) {
+void antMoves(const GameState *gs, Square square, MoveList *list) {
+	Color myColor = piece_at(gs, square)->color;
+	int dir = (myColor == YELLOW) ? -1 : 1;
+	int start_rank = (myColor == YELLOW) ? 6 : 1;
 
+	Square forward = make_square(square.rank + dir, square.file);
+	if (in_bounds(forward) && piece_at(gs, forward)->piecetype == EMPTY) {
+		Move move = {square, forward};
+		append_move(list, move);
+
+		Square forward2 = make_square(square.rank + 2 * dir, square.file);
+		if (square.rank == start_rank &&
+			in_bounds(forward2) &&
+			piece_at(gs, forward2)->piecetype == EMPTY) {
+			Move move2 = {square, forward2};
+			append_move(list, move2);
+			}
+	}
+
+	Square diagL = make_square(square.rank + dir, square.file - 1);
+	Square diagR = make_square(square.rank + dir, square.file + 1);
+
+	if (in_bounds(diagL)) {
+		Piece p = *piece_at(gs, diagL);
+		if (p.piecetype != EMPTY && p.color != myColor) {
+			Move move = {square, diagL};
+			append_move(list, move);
+		}
+	}
+
+	if (in_bounds(diagR)) {
+		Piece p = *piece_at(gs, diagR);
+		if (p.piecetype != EMPTY && p.color != myColor) {
+			Move move = {square, diagR};
+			append_move(list, move);
+		}
+	}
 }
