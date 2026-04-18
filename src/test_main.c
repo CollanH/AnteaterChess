@@ -1,15 +1,11 @@
 #include <GL/glut.h>
 #include "gui.h"
+#include <stdio.h>
 
-// create a fake gamestate just for testing
+// create a test GameState (I replace this later)
 GameState testState;
 
-void display(void) {
-glClear(GL_COLOR_BUFFER_BIT);
-dispUndo();
-glutSwapBuffers();
-}
-
+// initialize OpenGL settings
 void initGL(void) {
     glClearColor(0.2f, 0.2f, 0.2f, 1.0f);
     glMatrixMode(GL_PROJECTION);
@@ -18,12 +14,21 @@ void initGL(void) {
 }
 
 int main(int argc, char **argv) {
+
+    // initialize GLUT
     glutInit(&argc, argv);
     glutInitDisplayMode(GLUT_DOUBLE | GLUT_RGB);
     glutInitWindowSize(800, 700);
     glutCreateWindow("Anteater Chess");
+
     initGL();
+
+    // use display + mouse from gui.c
     glutDisplayFunc(display);
+    glutMouseFunc(mouseHandler);
+
+    // start event loop
     glutMainLoop();
+
     return 0;
 }

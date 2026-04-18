@@ -3,94 +3,143 @@
 //
 
 #include <GL/glut.h>
+#include <GL/freeglut.h>
 #include <stdio.h>
-#include "gui.h"
 #include <string.h>
+#include "gui.h"
 
-// global variables to track mouse clicks
-static int clickCount = 0;
+// SCREEN STATE MACHINE
+typedef enum {
+    SCREEN_MATCHUP,
+    SCREEN_COLOR,
+    SCREEN_CLOCK,
+    SCREEN_DIFFICULTY,
+    SCREEN_GAME
+} Screen;
+
+static Screen currentScreen = SCREEN_MATCHUP;
+
+// GLOBAL STATE
+static GameState *currentGameState = NULL; // game state pointer from chess.c
+static Color     humanColor        = YELLOW;
+static int       matchupChoice     = 0;    // 0=UvU, 1=UvAI, 2=AIvAI (matches chess.c)
+static int       clockChoice       = 1;    // 1=5min, 2=10min, 3=15min (chess.c *300)
+static int       difficultyChoice  = 1;    // 1=easy, 2=med, 3=hard (chess.c *2)
+
+// MOUSE / MOVE TRACKING
+static int    clickCount   = 0;
 static Square firstClick;
-static Move pendingMove;
-static int moveReady = 0;
+static Move   pendingMove;
+static int    moveReady    = 0;
 
-// window dimensions in pixels
-#define WINDOW_WIDTH 800
+// legal move highlights
+static MoveList highlightMoves;
+static int      hasHighlight = 0;
+
+// DIMENSIONS
+#define WINDOW_WIDTH  800
 #define WINDOW_HEIGHT 700
+#define SQUARE_SIZE   80
 
-// size of each square on the board in pixels
-#define SQUARE_SIZE 80
+// SETTERS (called by chess.c)
+void setGameState(GameState *gs)  { currentGameState = gs; }
+void setHumanColor(Color c)       { humanColor = c; }
 
-// called automatically when user clicks
-void mouse(int button, int state, int x, int y) {
-    if (button == GLUT_LEFT_BUTTON && state == GLUT_DOWN) {
-        // flip y coordinate since OpenGL starts from bottom
-        y = WINDOW_HEIGHT - y;
-        
-        // convert pixel coordinates to board square
-        int col = x / SQUARE_SIZE;
-        int row = y / SQUARE_SIZE;
-        
-        // make sure click is within board boundaries
-        if (col >= 0 && col < 10 && row >= 0 && row < 8) {
-            if (clickCount == 0) {
-                // first click - select piece
-                firstClick.file = (File)col;
-                firstClick.rank = row;
-                clickCount = 1;
-            } else {
-                // second click - select destination
-                pendingMove.from = firstClick;
-                pendingMove.to.file = (File)col;
-                pendingMove.to.rank = row;
-                moveReady = 1;
-                clickCount = 0;
-            }
-        }
-    }
+// HELPERS
+static void drawText(const char *str) {
+    while (*str) { glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, *str++); }
 }
 
+static void drawRect(float x1, float y1, float x2, float y2) {
+    glBegin(GL_QUADS);
+    glVertex2f(x1, y1); glVertex2f(x2, y1);
+    glVertex2f(x2, y2); glVertex2f(x1, y2);
+    glEnd();
+}
 
-void displayBoard(GameState *gs, int yellowSecs, int blueSecs, Color humanColor) {
-    
-    // loop through all 8 rows
-    for (int row = 0; row < 8; row++) {
-        // loop through all 10 columns
-        for (int col = 0; col < 10; col++) {
-            
-            // draw light or dark square based on row+col
-            if ((row + col) % 2 == 0) {
-                glColor3f(1.0f, 1.0f, 0.0f); // cream/light square
-            } else {
-                glColor3f(0.0f, 0.0f, 1.0f); // brown/dark square
-            }
-            
-            // calculate where this square goes on screen
-            // multiply by SQUARE_SIZE (80) to convert grid position to pixels
+static void drawButton(float x1, float y1, float x2, float y2, const char *text) {
+    glColor3f(0.75f, 0.75f, 0.75f);
+    drawRect(x1, y1, x2, y2);
+    glColor3f(0.0f, 0.0f, 0.0f);
+    glRasterPos2f(x1 + 20, (y1 + y2) / 2.0f - 6);
+    drawText(text);
+}
+
+// MENU SCREENS
+static void drawMatchupScreen(void) {
+    // white panel
+    glColor3f(1,1,1); drawRect(200,180,600,520);
+    // title
+    glColor3f(0,0,0);
+    glRasterPos2f(268, 485); drawText("ANTEATER CHESS  v1.0");
+    glRasterPos2f(275, 458); drawText("ChessEaters - UCI EECS 22L");
+    glRasterPos2f(295, 428); drawText("Select Matchup:");
+    // buttons
+    drawButton(220, 375, 580, 415, "User vs User");
+    drawButton(220, 320, 580, 360, "User vs AI");
+    drawButton(220, 265, 580, 305, "AI vs AI");
+}
+
+static void drawColorScreen(void) {
+    glColor3f(1,1,1); drawRect(200,200,600,500);
+    glColor3f(0,0,0);
+    glRasterPos2f(280, 462); drawText("Choose Your Color:");
+    // yellow button
+    glColor3f(0.9f,0.9f,0.0f); drawRect(220,370,580,420);
+    glColor3f(0,0,0);
+    glRasterPos2f(240,392); drawText("Yellow  (moves first)");
+    // blue button
+    glColor3f(0.0f,0.0f,0.85f); drawRect(220,305,580,355);
+    glColor3f(1,1,1);
+    glRasterPos2f(240,327); drawText("Blue");
+}
+
+static void drawClockScreen(void) {
+    glColor3f(1,1,1); drawRect(200,200,600,500);
+    glColor3f(0,0,0);
+    glRasterPos2f(250,462); drawText("Choose Time Per Player:");
+    drawButton(220,375,580,415,"5 minutes");
+    drawButton(220,320,580,360,"10 minutes");
+    drawButton(220,265,580,305,"15 minutes");
+}
+
+static void drawDifficultyScreen(void) {
+    glColor3f(1,1,1); drawRect(200,200,600,500);
+    glColor3f(0,0,0);
+    glRasterPos2f(265,462); drawText("Choose AI Difficulty:");
+    drawButton(220,375,580,415,"Easy");
+    drawButton(220,320,580,360,"Medium");
+    drawButton(220,265,580,305,"Hard");
+}
+
+// DISPLAY BOARD
+void displayBoard(GameState *gs, int yellowSecs, int blueSecs, Color hColor) {
+    int row, col;
+
+    for (row = 0; row < 8; row++) {
+        for (col = 0; col < 10; col++) {
+            // flip board if human is blue so their pieces are at bottom
+            int boardRow = (hColor == YELLOW) ? (7 - row) : row;
+            int boardCol = (hColor == YELLOW) ? (9 - col) : col;
+
+            // alternating squares
+            if ((row + col) % 2 == 0)
+                glColor3f(1.0f, 1.0f, 0.0f); // yellow square
+            else
+                glColor3f(0.0f, 0.0f, 1.0f); // blue square
+
             float x = col * SQUARE_SIZE;
             float y = row * SQUARE_SIZE;
-            
-            // draw the square using 4 corners
-            glBegin(GL_QUADS);
-                glVertex2f(x, y);                              // bottom left
-                glVertex2f(x + SQUARE_SIZE, y);               // bottom right
-                glVertex2f(x + SQUARE_SIZE, y + SQUARE_SIZE); // top right
-                glVertex2f(x, y + SQUARE_SIZE);               // top left
-            glEnd();
-            
-            // get the piece on this square
-            Piece p = gs->board[row][col];
-            
-            // only draw something if square is not empty
+            drawRect(x, y, x + SQUARE_SIZE, y + SQUARE_SIZE);
+
+            // draw piece letter if not empty
+            Piece p = gs->board[boardRow][boardCol];
             if (p.piecetype != EMPTY) {
-                
-                // set piece color - yellow pieces are gold, blue pieces are blue
-                if (p.color == YELLOW) {
-                    glColor3f(1.0f, 0.85f, 0.0f); // gold color for yellow
-                } else {
-                    glColor3f(0.0f, 0.5f, 1.0f);  // blue color for blue
-                }
-                
-                // pick the letter to represent each piece type
+                if (p.color == YELLOW)
+                    glColor3f(1.0f, 0.85f, 0.0f); // gold
+                else
+                    glColor3f(0.9f, 0.9f, 1.0f);  // light blue/white
+
                 char letter;
                 switch (p.piecetype) {
                     case KING:     letter = 'K'; break;
@@ -102,328 +151,264 @@ void displayBoard(GameState *gs, int yellowSecs, int blueSecs, Color humanColor)
                     case ANTEATER: letter = 'T'; break;
                     default:       letter = '?'; break;
                 }
-                
-                // position the letter in the center of the square
-                glRasterPos2f(x + 30, y + 30);
-                
-                // draw the letter on screen
+                glRasterPos2f(x + 32, y + 28);
                 glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, letter);
             }
         }
     }
-    
-    // draw the clocks at the bottom of the screen (in the 60px leftover space)
-    // yellow clock on the left
-    glColor3f(1.0f, 0.85f, 0.0f); // gold color
-    glRasterPos2f(50, 655);
-    char yellowTime[30];
-    sprintf(yellowTime, "Yellow: %02d:%02d", yellowSecs / 60, yellowSecs % 60);
-    char *yt = yellowTime;
-    while (*yt) {
-        glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, *yt);
-        yt++;
+
+    // column labels A-J in clock strip
+    glColor3f(1,1,1);
+    for (col = 0; col < 10; col++) {
+        char lbl[2];
+        lbl[0] = (hColor == BLUE) ? ('J' - col) : ('A' + col);
+        lbl[1] = '\0';
+        glRasterPos2f(col * SQUARE_SIZE + 34, 643);
+        drawText(lbl);
     }
-    
-    // blue clock on the right
-    glColor3f(0.0f, 0.5f, 1.0f); // blue color
-    glRasterPos2f(550, 655);
-    char blueTime[30];
-    sprintf(blueTime, "Blue: %02d:%02d", blueSecs / 60, blueSecs % 60);
-    char *bt = blueTime;
-    while (*bt) {
-        glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, *bt);
-        bt++;
-    }
+
+    // yellow clock left
+    glColor3f(1.0f, 0.9f, 0.0f);
+    glRasterPos2f(5, 670);
+    char yt[32];
+    sprintf(yt, "Yellow: %02d:%02d", yellowSecs/60, yellowSecs%60);
+    drawText(yt);
+
+    // blue clock right
+    glColor3f(0.4f, 0.7f, 1.0f);
+    glRasterPos2f(490, 670);
+    char bt[32];
+    sprintf(bt, "Blue: %02d:%02d", blueSecs/60, blueSecs%60);
+    drawText(bt);
+
+    // undo button
+    dispUndo();
+
+    // legal move highlights
+    if (hasHighlight)
+        dispLegalMoves(&highlightMoves);
 }
 
+// DISPLAY CALLBACK
+void display(void) {
+    glClear(GL_COLOR_BUFFER_BIT);
+    
+    printf("display called, screen=%d, gs=%p\n", currentScreen, (void*)currentGameState);
+    
+    switch (currentScreen) {
+        case SCREEN_MATCHUP:    drawMatchupScreen();    break;
+        case SCREEN_COLOR:      drawColorScreen();      break;
+        case SCREEN_CLOCK:      drawClockScreen();      break;
+        case SCREEN_DIFFICULTY: drawDifficultyScreen(); break;
+        case SCREEN_GAME:
+            if (currentGameState != NULL)
+                displayBoard(currentGameState, 300, 300, humanColor);
+            break;
+    }
 
+    glutSwapBuffers();
+    
+    if (currentScreen == SCREEN_GAME)
+        glutPostRedisplay();
+}
+
+// MOUSE HANDLER
+void mouseHandler(int button, int state, int x, int y) {
+    if (button != GLUT_LEFT_BUTTON || state != GLUT_DOWN) return;
+    y = WINDOW_HEIGHT - y; // flip y
+
+    switch (currentScreen) {
+
+        case SCREEN_MATCHUP:
+            if      (x>=220&&x<=580&&y>=375&&y<=415){ matchupChoice=0; currentScreen=SCREEN_COLOR; }
+            else if (x>=220&&x<=580&&y>=320&&y<=360){ matchupChoice=1; currentScreen=SCREEN_COLOR; }
+            else if (x>=220&&x<=580&&y>=265&&y<=305){ matchupChoice=2; currentScreen=SCREEN_COLOR; }
+            break;
+
+        case SCREEN_COLOR:
+            if      (x>=220&&x<=580&&y>=370&&y<=420){ humanColor=YELLOW; currentScreen=SCREEN_CLOCK; }
+            else if (x>=220&&x<=580&&y>=305&&y<=355){ humanColor=BLUE;   currentScreen=SCREEN_CLOCK; }
+            break;
+
+        case SCREEN_CLOCK:
+            if      (x>=220&&x<=580&&y>=375&&y<=415){ clockChoice=1; }
+            else if (x>=220&&x<=580&&y>=320&&y<=360){ clockChoice=2; }
+            else if (x>=220&&x<=580&&y>=265&&y<=305){ clockChoice=3; }
+            else break;
+            // go to difficulty if AI matchup, else start game
+            currentScreen = (matchupChoice > 0) ? SCREEN_DIFFICULTY : SCREEN_GAME;
+            break;
+
+        case SCREEN_DIFFICULTY:
+            if      (x>=220&&x<=580&&y>=375&&y<=415){ difficultyChoice=1; currentScreen=SCREEN_GAME; }
+            else if (x>=220&&x<=580&&y>=320&&y<=360){ difficultyChoice=2; currentScreen=SCREEN_GAME; }
+            else if (x>=220&&x<=580&&y>=265&&y<=305){ difficultyChoice=3; currentScreen=SCREEN_GAME; }
+            break;
+
+        case SCREEN_GAME: {
+            int col = x / SQUARE_SIZE;
+            int row = y / SQUARE_SIZE;
+                printf("clicked col=%d row=%d clickCount=%d\n", col, row, clickCount);
+
+            if (col >= 0 && col < 10 && row >= 0 && row < 8) {
+                // flip if blue
+                int boardRow = (humanColor == BLUE) ? (7 - row) : row;
+                int boardCol = (humanColor == BLUE) ? (9 - col) : col;
+                if (clickCount == 0) {
+                    firstClick.file = (File)boardCol;
+                    firstClick.rank = boardRow;
+                    clickCount  = 1;
+                    hasHighlight = 0;
+                } else {
+                    pendingMove.from     = firstClick;
+                    pendingMove.to.file  = (File)boardCol;
+                    pendingMove.to.rank  = boardRow;
+                    moveReady   = 1;
+                    clickCount  = 0;
+                    hasHighlight = 0;
+                }
+            }
+            break;
+        }
+    }
+
+    glutPostRedisplay();
+}
+
+// PUBLIC FUNCTIONS (called by chess.c)
+
+// returns 0=UvU, 1=UvAI, 2=AIvAI  (matches chess.c switch cases)
+int matchupMenu(void) { return matchupChoice; }
+
+// returns YELLOW or BLUE
+Color colorMenu(void) { return humanColor; }
+
+// returns 1, 2, or 3  (chess.c multiplies by 2 for depth)
+int difficultyMenu(void) { return difficultyChoice; }
+
+// returns 1, 2, or 3  (chess.c multiplies by 300 for seconds)
+int clockMenu(void) { return clockChoice; }
+
+// displays victory popup
 void dispWin(Color winner) {
-    // white rectangle
-    glColor3f(1.0f, 1.0f, 1.0f); //white
-    glBegin(GL_QUADS); //for objs
-    glVertex2f(250, 270); //bot left
-    glVertex2f(550, 270); //bot right
-    glVertex2f(550, 370); //top right
-    glVertex2f(250, 370); //top left
-    glEnd();
-
-    // first line - who got checkmated
-    const char *l = (winner == YELLOW) ? "Blue checkmated!" : "Yellow checkmated!";
-    glColor3f(0.0f, 0.0f, 0.0f); // black text
-    glRasterPos2f(310, 340); //where text is
-    while (*l) {
-        glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, *l);
-        l++;
-    }
-
-    // second line - who wins
-    const char *w = (winner == YELLOW) ? "YELLOW WINS!" : "BLUE WINS!";
-    if (winner == YELLOW) {
-        glColor3f(1.0f, 1.0f, 0.0f); // yellow
-    } else {
-        glColor3f(0.0f, 0.0f, 1.0f); // blue
-    }
-    glRasterPos2f(310, 300); //where text is written
-    while (*w) {
-        glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, *w);
-        w++;
-    }
+    glColor3f(1,1,1); drawRect(180,260,620,390);
+    const char *l = (winner==YELLOW) ? "Blue checkmated!" : "Yellow checkmated!";
+    glColor3f(0,0,0);
+    glRasterPos2f(270, 355); drawText(l);
+    const char *w = (winner==YELLOW) ? "YELLOW WINS!" : "BLUE WINS!";
+    if (winner==YELLOW) glColor3f(0.8f,0.8f,0.0f);
+    else                glColor3f(0.0f,0.0f,1.0f);
+    glRasterPos2f(290, 295); drawText(w);
+    glutSwapBuffers();
 }
 
-
-//printing stalemate menu if draw detected
+// displays stalemate popup
 void dispStalemate(void) {
-     // white rectangle
-    glColor3f(1.0f, 1.0f, 1.0f);
-    glBegin(GL_QUADS);
-    glVertex2f(150, 270);
-    glVertex2f(650, 270);
-    glVertex2f(650, 370);
-    glVertex2f(150, 370);
-    glEnd();
-
-    // first line
-    glColor3f(0.0f, 0.0f, 0.0f);
-    glRasterPos2f(310, 340);
-    const char *stalemate = "Stalemate!";
-    while (*stalemate) { 
-        glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, *stalemate); 
-        stalemate++; }
-
-    // second line
-    glRasterPos2f(220, 300);
-    const char *draw = "DRAW! No legal moves remaining.";
-    while (*draw) {
-         glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, *draw); 
-         draw++; }
+    glColor3f(1,1,1); drawRect(130,260,670,390);
+    glColor3f(0,0,0);
+    glRasterPos2f(330,355); drawText("Stalemate!");
+    glRasterPos2f(185,295); drawText("DRAW! No legal moves remaining.");
+    glutSwapBuffers();
 }
 
-// displays timeout screen
+// displays timeout popup
 void dispTimeout(Color loser) {
-    glColor3f(1.0f, 1.0f, 1.0f);
-    glBegin(GL_QUADS);
-    glVertex2f(250, 270);
-    glVertex2f(550, 270);
-    glVertex2f(550, 370);
-    glVertex2f(250, 370);
-    glEnd();
-
-    const char *l = (loser == YELLOW) ? "Yellow timed out!" : "Blue timed out!";
-    glColor3f(0.0f, 0.0f, 0.0f);
-    glRasterPos2f(280, 340);
-    while (*l) {
-         glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, *l); 
-         l++; }
-
-    const char *w = (loser == YELLOW) ? "BLUE WINS!" : "YELLOW WINS!";
-    if (loser == YELLOW) {
-        glColor3f(0.0f, 0.0f, 1.0f);
-    } else {
-        glColor3f(1.0f, 1.0f, 0.0f);
-    }
-    glRasterPos2f(310, 300);
-    while (*w) { 
-        glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, *w);
-         w++;
-         }
-}
-// displays matchup menu
-int matchupMenu(void) {
-    glColor3f(1.0f, 1.0f, 1.0f);
-    glBegin(GL_QUADS);
-    glVertex2f(200, 200);
-    glVertex2f(600, 200);
-    glVertex2f(600, 500);
-    glVertex2f(200, 500);
-    glEnd();
-
-    glColor3f(0.0f, 0.0f, 0.0f);
-    glRasterPos2f(300, 450);
-    const char *title = "ANTEATER CHESS";
-    while (*title) { glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, *title); title++; }
-
-    glRasterPos2f(220, 400);
-    const char *op1 = "1. User vs User";
-    while (*op1) { glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, *op1); op1++; }
-
-    glRasterPos2f(220, 360);
-    const char *op2 = "2. User vs AI";
-    while (*op2) { glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, *op2); op2++; }
-
-    glRasterPos2f(220, 320);
-    const char *op3 = "3. AI vs AI";
-    while (*op3) { glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, *op3); op3++; }
-
+    glColor3f(1,1,1); drawRect(180,260,620,390);
+    const char *l = (loser==YELLOW) ? "Yellow timed out!" : "Blue timed out!";
+    glColor3f(0,0,0);
+    glRasterPos2f(260,355); drawText(l);
+    const char *w = (loser==YELLOW) ? "BLUE WINS!" : "YELLOW WINS!";
+    if (loser==YELLOW) glColor3f(0.0f,0.0f,1.0f);
+    else               glColor3f(0.8f,0.8f,0.0f);
+    glRasterPos2f(290,295); drawText(w);
     glutSwapBuffers();
-    int choice;
-    scanf("%d", &choice);
-    if (choice < 1 || choice > 3) choice = 1;
-    return choice;
 }
 
-// displays color selection menu
-Color colorMenu(void) {
-    glColor3f(1.0f, 1.0f, 1.0f);
-    glBegin(GL_QUADS);
-    glVertex2f(200, 250);
-    glVertex2f(600, 250);
-    glVertex2f(600, 450);
-    glVertex2f(200, 450);
-    glEnd();
-
-    glColor3f(0.0f, 0.0f, 0.0f);
-    glRasterPos2f(300, 400);
-    const char *title = "Choose your color:";
-    while (*title) { glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, *title); title++; }
-
-    glColor3f(1.0f, 1.0f, 0.0f);
-    glRasterPos2f(220, 350);
-    const char *op1 = "1. Yellow (moves first)";
-    while (*op1) { glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, *op1); op1++; }
-
-    glColor3f(0.0f, 0.0f, 1.0f);
-    glRasterPos2f(220, 300);
-    const char *op2 = "2. Blue";
-    while (*op2) { glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, *op2); op2++; }
-
-    glutSwapBuffers();
-    int choice;
-    scanf("%d", &choice);
-    return (choice == 2) ? BLUE : YELLOW;
-}
-
-// displays difficulty menu
-int difficultyMenu(void) {
-    glColor3f(1.0f, 1.0f, 1.0f);
-    glBegin(GL_QUADS);
-    glVertex2f(200, 200);
-    glVertex2f(600, 200);
-    glVertex2f(600, 500);
-    glVertex2f(200, 500);
-    glEnd();
-
-    glColor3f(0.0f, 0.0f, 0.0f);
-    glRasterPos2f(280, 450);
-    const char *title = "Choose difficulty:";
-    while (*title) { glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, *title); title++; }
-
-    glRasterPos2f(220, 400);
-    const char *op1 = "1. Easy";
-    while (*op1) { glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, *op1); op1++; }
-
-    glRasterPos2f(220, 360);
-    const char *op2 = "2. Medium";
-    while (*op2) { glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, *op2); op2++; }
-
-    glRasterPos2f(220, 320);
-    const char *op3 = "3. Hard";
-    while (*op3) { glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, *op3); op3++; }
-
-    glutSwapBuffers();
-    int choice;
-    scanf("%d", &choice);
-    if (choice < 1 || choice > 3) choice = 1;
-    return choice;
-}
-
-// displays clock menu
-int clockMenu(void) {
-    glColor3f(1.0f, 1.0f, 1.0f);
-    glBegin(GL_QUADS);
-    glVertex2f(200, 200);
-    glVertex2f(600, 200);
-    glVertex2f(600, 500);
-    glVertex2f(200, 500);
-    glEnd();
-
-    glColor3f(0.0f, 0.0f, 0.0f);
-    glRasterPos2f(250, 450);
-    const char *title = "Choose time per player:";
-    while (*title) { glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, *title); title++; }
-
-    glRasterPos2f(220, 400);
-    const char *op1 = "1. 5 minutes";
-    while (*op1) { glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, *op1); op1++; }
-
-    glRasterPos2f(220, 360);
-    const char *op2 = "2. 10 minutes";
-    while (*op2) { glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, *op2); op2++; }
-
-    glRasterPos2f(220, 320);
-    const char *op3 = "3. 15 minutes";
-    while (*op3) { glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, *op3); op3++; }
-
-    glutSwapBuffers();
-    int choice;
-    scanf("%d", &choice);
-    if (choice < 1 || choice > 3) choice = 1;
-    return choice * 300;
-}
-
-// displays AI move
+// displays AI move text in clock strip
 void aiMove(Move move) {
     char from[3], to[3];
-    from[0] = 'A' + move.from.file;
-    from[1] = '0' + move.from.rank;
-    from[2] = '\0';
-    to[0] = 'A' + move.to.file;
-    to[1] = '0' + move.to.rank;
-    to[2] = '\0';
-
-    glColor3f(0.0f, 0.0f, 0.0f);
-    glRasterPos2f(50, 670);
-    const char *msg = "AI played: ";
-    while (*msg) { glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, *msg); msg++; }
-    char *f = from;
-    while (*f) { glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, *f); f++; }
-    glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, ' ');
-    char *t = to;
-    while (*t) { glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, *t); t++; }
+    from[0]='A'+move.from.file; from[1]='0'+move.from.rank; from[2]='\0';
+    to[0]  ='A'+move.to.file;   to[1]  ='0'+move.to.rank;   to[2]  ='\0';
+    glColor3f(0,0,0);
+    glRasterPos2f(320,657);
+    char msg[24];
+    sprintf(msg,"AI: %s -> %s", from, to);
+    drawText(msg);
+    glutSwapBuffers();
 }
 
-// displays error message
+// displays red error message
 void printError(const char *msg) {
-    glColor3f(1.0f, 0.0f, 0.0f);
-    glRasterPos2f(50, 675);
-    while (*msg) { glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, *msg); msg++; }
+    glColor3f(1,0,0);
+    glRasterPos2f(5,675);
+    drawText(msg);
+    glutSwapBuffers();
 }
 
-// displays undo button
+// displays undo button in clock strip
 void dispUndo(void) {
-    glColor3f(0.5f, 0.5f, 0.5f);
-    glBegin(GL_QUADS);
-    glVertex2f(650, 10);
-    glVertex2f(790, 10);
-    glVertex2f(790, 50);
-    glVertex2f(650, 50);
-    glEnd();
-
-    glColor3f(1.0f, 1.0f, 1.0f);
-    glRasterPos2f(670, 25);
-    const char *btn = "UNDO";
-    while (*btn) { glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, *btn); btn++; }
+    glColor3f(0.4f,0.4f,0.4f); drawRect(658,641,795,669);
+    glColor3f(1,1,1);
+    glRasterPos2f(692,651); drawText("UNDO");
 }
 
-// highlights legal move squares
+// highlights legal moves with path projection for sliding pieces
 void dispLegalMoves(MoveList *moves) {
-    for (int i = 0; i < moves->count; i++) {
-        float x = moves->moves[i].to.file * SQUARE_SIZE; //col of destination sq
-        float y = moves->moves[i].to.rank * SQUARE_SIZE; //row of destination sq
+    int i;
+    if (!moves || moves->count == 0) return;
 
-        glColor3f(0.0f, 1.0f, 0.0f); // green highlight
-        glBegin(GL_QUADS); //green rectangle
-        glVertex2f(x, y);
-        glVertex2f(x + SQUARE_SIZE, y);
-        glVertex2f(x + SQUARE_SIZE, y + SQUARE_SIZE);
-        glVertex2f(x, y + SQUARE_SIZE);
-        glEnd();
+    // store for display loop
+    highlightMoves = *moves;
+    hasHighlight   = 1;
+
+    for (i = 0; i < moves->count; i++) {
+        int toFile   = moves->moves[i].to.file;
+        int toRank   = moves->moves[i].to.rank;
+        int fromFile = moves->moves[i].from.file;
+        int fromRank = moves->moves[i].from.rank;
+
+        // direction of movement
+        int dFile = 0, dRank = 0;
+        if      (toFile > fromFile) dFile =  1;
+        else if (toFile < fromFile) dFile = -1;
+        if      (toRank > fromRank) dRank =  1;
+        else if (toRank < fromRank) dRank = -1;
+
+        // highlight path squares (not including source)
+        int curFile = fromFile + dFile;
+        int curRank = fromRank + dRank;
+        while (curFile != toFile || curRank != toRank) {
+            int sc = (humanColor==BLUE) ? (9-curFile) : curFile;
+            int sr = (humanColor==BLUE) ? (7-curRank) : curRank;
+            float px = sc * SQUARE_SIZE;
+            float py = sr * SQUARE_SIZE;
+            glColor3f(0.0f, 0.7f, 0.0f);
+            drawRect(px+10, py+10, px+SQUARE_SIZE-10, py+SQUARE_SIZE-10);
+            curFile += dFile;
+            curRank += dRank;
+        }
+
+        // highlight destination square (brighter)
+        int sc = (humanColor==BLUE) ? (9-toFile) : toFile;
+        int sr = (humanColor==BLUE) ? (7-toRank) : toRank;
+        float px = sc * SQUARE_SIZE;
+        float py = sr * SQUARE_SIZE;
+        glColor3f(0.0f, 1.0f, 0.0f);
+        drawRect(px+4, py+4, px+SQUARE_SIZE-4, py+SQUARE_SIZE-4);
     }
 }
-
-// gets move from player mouse click
-Move getMove(GameState *gs) {
-    moveReady = 0;
-    glutMouseFunc(mouse);
-    return pendingMove;
+// returns 1 when player has finished all menus and game is ready to start
+int isGameReady(void) {
+    return currentScreen == SCREEN_GAME;
 }
 
+// waits for player to click two squares, returns move
+Move getMove(GameState *gs) {
+  moveReady = 0;
+    clickCount = 0;
+    while (!moveReady) {
+        glutMainLoopEvent();
+        glutPostRedisplay();
+    }
+    return pendingMove;
+}
