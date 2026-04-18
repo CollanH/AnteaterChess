@@ -28,7 +28,7 @@ void delete_move(MoveList* moveList, int index){
 }
 
 Move* moveList_at(MoveList* moveList, int index){
-	if(index >= moveList->count)
+	if(index > moveList->count)
 		return NULL;
 	return &(moveList->moves[index]);
 }

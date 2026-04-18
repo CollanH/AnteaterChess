@@ -10,7 +10,7 @@ typedef struct {
 
 
 
-
+/*
 int main() {
 	typedef struct {
 		char board[81];
@@ -179,3 +179,4 @@ int main() {
 	return 0;
 
 }
+*/

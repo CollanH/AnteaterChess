@@ -4,6 +4,6 @@
 #include "chess_types.h"
 #ifndef CHESS22L_LEGALMOVEGEN_H
 #define CHESS22L_LEGALMOVEGEN_H
-	MoveList legalMoveGen(const GameState *gs);
-	bool inCheck(GameState* gs, Color color);
+	MoveList legalMoveGen(GameState *gs);
+	MoveList findPossibleMoves(GameState *gs, Square square);
 #endif //CHESS22L_LEGALMOVEGEN_H
