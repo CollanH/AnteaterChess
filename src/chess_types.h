@@ -67,6 +67,10 @@ typedef struct GameState {
 } GameState;
 
 
+// FOR GUI TO CALL
+GameState* undo(GameState* gs);
+GameState* make_move(const GameState* gs, Move move);
+
 
 
 Square make_square(int rank, File file);
@@ -79,7 +83,6 @@ void delete_move(MoveList* moveList, int index);
 // appends a move at the end of a moveList
 void append_move(MoveList* moveList, Move move);
 const Piece* piece_at(const GameState* gs, Square square);
-GameState make_move(const GameState* gs, Move move);
 Piece make_piece(PieceType pt, Color color);
 void replace_piece(GameState* gs, Piece piece, Square square);
 GameState initalize_empty_GameState();

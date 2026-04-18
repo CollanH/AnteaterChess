@@ -1,5 +1,6 @@
 #include "chess_types.h"
 #include "string.h"
+#include "stdlib.h"
 
 Square make_square(int rank, File file){
 	Square sq;
@@ -50,14 +51,109 @@ Piece make_piece(PieceType pt, Color color) {
 	return p;
 }
 
-GameState make_move(const GameState* gs, Move move){
-	GameState new_gs = *gs;
+bool square_equals(Square a, Square b) {
+	return a.file == b.file && a.rank == b.rank;
+}
+
+GameState* undo(GameState* gs) {
+	if (gs == NULL) return NULL;
+
+	GameState* prev = gs->prev_state;
+	free(gs);
+	return prev;
+
+}
+
+
+GameState* make_move(const GameState* gs, Move move) {
+	GameState* new_gs = malloc(sizeof(GameState));
+	*new_gs = *gs;
+
+	new_gs->prev_state = (GameState*)gs;
 	Piece piece = *piece_at(gs, move.from);
-	replace_piece(&new_gs, piece, move.to);
-	replace_piece(&new_gs, make_piece(EMPTY, YELLOW), move.from);
+
+	if (square_equals(move.to, make_square(7, A))) {
+		new_gs->yellow_qscastle = false;
+	}
+	if (square_equals(move.to, make_square(7, J))) {
+		new_gs->yellow_kscastle = false;
+	}
+	if (square_equals(move.to, make_square(0, A))) {
+		new_gs->blue_qscastle = false;
+	}
+	if (square_equals(move.to, make_square(0, J))) {
+		new_gs->blue_kscastle = false;
+	}
+
+	if (piece.piecetype == ROOK) {
+		if (square_equals(move.from, make_square(7, A))) {
+			new_gs->yellow_qscastle = false;
+		}
+		else if (square_equals(move.from, make_square(7, J))) {
+			new_gs->yellow_kscastle = false;
+		}
+		else if (square_equals(move.from, make_square(0, A))) {
+			new_gs->blue_qscastle = false;
+		}
+		else if (square_equals(move.from, make_square(0, J))) {
+			new_gs->blue_kscastle = false;
+		}
+	}
+	else if (piece.piecetype == ANT) {
+		if (move.from.rank - move.to.rank == 2) {
+			new_gs->en_passant_square = make_square(move.to.rank + 1, move.to.file);
+		}
+		else if (move.from.rank - move.to.rank == -2) {
+			new_gs->en_passant_square = make_square(move.to.rank - 1, move.to.file);
+		}
+	}
+	else if (piece.piecetype == KING) {
+		if (piece.color == YELLOW) {
+			new_gs->yellow_qscastle = false;
+			new_gs->yellow_kscastle = false;
+		}
+		else {
+			new_gs->blue_qscastle = false;
+			new_gs->blue_kscastle = false;
+		}
+	}
+
+	if (piece.piecetype == ANT && square_equals(move.to, gs->en_passant_square)) {
+		if (piece.color == YELLOW) {
+			replace_piece(new_gs, make_piece(EMPTY, YELLOW),
+				make_square(gs->en_passant_square.rank + 1, gs->en_passant_square.file));
+		}
+		else {
+			replace_piece(new_gs, make_piece(EMPTY, YELLOW),
+				make_square(gs->en_passant_square.rank - 1, gs->en_passant_square.file));
+		}
+	}
+
+	if (piece.piecetype == KING && move.from.file - move.to.file == 2) {
+		if (piece.color == YELLOW) {
+			replace_piece(new_gs, make_piece(ROOK, YELLOW), make_square(7, E));
+			replace_piece(new_gs, make_piece(EMPTY, YELLOW), make_square(7, A));
+		}
+		else {
+			replace_piece(new_gs, make_piece(ROOK, BLUE), make_square(0, E));
+			replace_piece(new_gs, make_piece(EMPTY, YELLOW), make_square(0, A));
+		}
+	}
+	else if (piece.piecetype == KING && move.from.file - move.to.file == -2) {
+		if (piece.color == YELLOW) {
+			replace_piece(new_gs, make_piece(ROOK, YELLOW), make_square(7, G));
+			replace_piece(new_gs, make_piece(EMPTY, YELLOW), make_square(7, J));
+		}
+		else {
+			replace_piece(new_gs, make_piece(ROOK, BLUE), make_square(0, G));
+			replace_piece(new_gs, make_piece(EMPTY, YELLOW), make_square(0, J));
+		}
+	}
+
+	replace_piece(new_gs, piece, move.to);
+	replace_piece(new_gs, make_piece(EMPTY, YELLOW), move.from);
 
 	return new_gs;
-
 }
 
 GameState initalize_empty_GameState() {
