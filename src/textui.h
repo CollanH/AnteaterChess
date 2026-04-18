@@ -11,7 +11,7 @@
 #define TUI_CMD_QUIT -2
 #define TUI_CMD_HELP -3
 
-void displayboard(GameState *gs, int yellowSecs, int blueSecs, Color humanColor);  //displays full board to terminal 
+void displayBoard(GameState *gs, int yellowSecs, int blueSecs, Color humanColor);  //displays full board to terminal
 void dispLegalMoves(MoveList *moves); //prints legal destination squares for piece selected
 Move getMove(GameState *gs); //returns a move after reading command from player
 void dispWin (Color winner); //prints win banner when checkmated
