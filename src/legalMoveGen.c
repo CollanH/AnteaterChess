@@ -362,6 +362,9 @@ bool king_check(const GameState* gs, Color color){
 
 	return false;
 }
+
+
+
 bool inCheck(const GameState* gs, Color color){
 	bool check = queen_bishop_rook_check(gs, color)
 			|| pawn_check(gs, color)
@@ -371,6 +374,19 @@ bool inCheck(const GameState* gs, Color color){
 
 	return check;
 
+
+}
+bool move_in_check(const GameState *gs, const Move* move) {
+	GameState game = *gs;
+	Piece mover = *piece_at(&game, move->from);
+
+	game.board[move->to.rank][move->to.file] = mover;
+	game.board[move->from.rank][move->from.file] = make_piece(EMPTY, YELLOW);
+	if(inCheck(&game, mover.color)) {
+		return true;
+	}
+
+	return false;
 
 }
 
@@ -387,7 +403,153 @@ void kingMoves(const GameState *gs, Square square, MoveList* moveList){
 			append_move(moveList, move);
 		}
 	}
+
+	// castling logic
+
+	if (piece_at(gs, square)->color == YELLOW) {
+	    if (gs->yellow_qscastle && square.rank == 7 && square.file == F) {
+	        bool can = true;
+
+	        if (inCheck(gs, YELLOW)) {
+	            can = false;
+	        }
+
+	        // squares between rook and king must be empty
+	        if (piece_at(gs, make_square(7, B))->piecetype != EMPTY ||
+	            piece_at(gs, make_square(7, C))->piecetype != EMPTY ||
+	            piece_at(gs, make_square(7, D))->piecetype != EMPTY ||
+	            piece_at(gs, make_square(7, E))->piecetype != EMPTY) {
+	            can = false;
+	        }
+
+	        // king path safety: E, D
+	        if (can) {
+	            Move move;
+	            move.from = square;
+
+	            move.to = make_square(7, E);
+	            if (move_in_check(gs, &move)) can = false;
+
+	            move.to = make_square(7, D);
+	            if (move_in_check(gs, &move)) can = false;
+	        }
+
+	        if (can) {
+	            Move move;
+	            move.from = square;
+	            move.to = make_square(7, D);
+	            append_move(moveList, move);
+	        }
+	    }
+
+	    if (gs->yellow_kscastle && square.rank == 7 && square.file == F) {
+	        bool can = true;
+
+	        if (inCheck(gs, YELLOW)) {
+	            can = false;
+	        }
+
+	        // squares between king and rook must be empty
+	        if (piece_at(gs, make_square(7, G))->piecetype != EMPTY ||
+	            piece_at(gs, make_square(7, H))->piecetype != EMPTY ||
+	            piece_at(gs, make_square(7, I))->piecetype != EMPTY) {
+	            can = false;
+	        }
+
+	        // king path safety: G, H
+	        if (can) {
+	            Move move;
+	            move.from = square;
+
+	            move.to = make_square(7, G);
+	            if (move_in_check(gs, &move)) can = false;
+
+	            move.to = make_square(7, H);
+	            if (move_in_check(gs, &move)) can = false;
+	        }
+
+	        if (can) {
+	            Move move;
+	            move.from = square;
+	            move.to = make_square(7, H);
+	            append_move(moveList, move);
+	        }
+	    }
+	}
+	else {
+	    if (gs->blue_qscastle && square.rank == 0 && square.file == F) {
+	        bool can = true;
+
+	        if (inCheck(gs, BLUE)) {
+	            can = false;
+	        }
+
+	        // squares between rook and king must be empty
+	        if (piece_at(gs, make_square(0, B))->piecetype != EMPTY ||
+	            piece_at(gs, make_square(0, C))->piecetype != EMPTY ||
+	            piece_at(gs, make_square(0, D))->piecetype != EMPTY ||
+	            piece_at(gs, make_square(0, E))->piecetype != EMPTY) {
+	            can = false;
+	        }
+
+	        // king path safety: E, D
+	        if (can) {
+	            Move move;
+	            move.from = square;
+
+	            move.to = make_square(0, E);
+	            if (move_in_check(gs, &move)) can = false;
+
+	            move.to = make_square(0, D);
+	            if (move_in_check(gs, &move)) can = false;
+	        }
+
+	        if (can) {
+	            Move move;
+	            move.from = square;
+	            move.to = make_square(0, D);
+	            append_move(moveList, move);
+	        }
+	    }
+
+	    if (gs->blue_kscastle && square.rank == 0 && square.file == F) {
+	        bool can = true;
+
+	        if (inCheck(gs, BLUE)) {
+	            can = false;
+	        }
+
+	        // squares between king and rook must be empty
+	        if (piece_at(gs, make_square(0, G))->piecetype != EMPTY ||
+	            piece_at(gs, make_square(0, H))->piecetype != EMPTY ||
+	            piece_at(gs, make_square(0, I))->piecetype != EMPTY) {
+	            can = false;
+	        }
+
+	        // king path safety: G, H
+	        if (can) {
+	            Move move;
+	            move.from = square;
+
+	            move.to = make_square(0, G);
+	            if (move_in_check(gs, &move)) can = false;
+
+	            move.to = make_square(0, H);
+	            if (move_in_check(gs, &move)) can = false;
+	        }
+
+	        if (can) {
+	            Move move;
+	            move.from = square;
+	            move.to = make_square(0, H);
+	            append_move(moveList, move);
+	        }
+	    }
+	}
+
 }
+
+
 
 
 void anteaterMoves(const GameState *gs, Square square, MoveList *list) {
@@ -520,6 +682,7 @@ void queenMoves(const GameState *pState, Square square, MoveList *list) {
 }
 
 void antMoves(const GameState *gs, Square square, MoveList *list) {
+
 	Color myColor = piece_at(gs, square)->color;
 	int dir = (myColor == YELLOW) ? -1 : 1;
 	int start_rank = (myColor == YELLOW) ? 6 : 1;
@@ -535,7 +698,7 @@ void antMoves(const GameState *gs, Square square, MoveList *list) {
 			piece_at(gs, forward2)->piecetype == EMPTY) {
 			Move move2 = {square, forward2};
 			append_move(list, move2);
-			}
+		}
 	}
 
 	Square diagL = make_square(square.rank + dir, square.file - 1);
@@ -555,5 +718,14 @@ void antMoves(const GameState *gs, Square square, MoveList *list) {
 			Move move = {square, diagR};
 			append_move(list, move);
 		}
+	}
+
+	if (in_bounds(gs->en_passant_square)) {
+		if (gs->en_passant_square.rank == square.rank + dir &&
+			(gs->en_passant_square.file == square.file - 1 ||
+			 gs->en_passant_square.file == square.file + 1)) {
+			Move move = {square, gs->en_passant_square};
+			append_move(list, move);
+			 }
 	}
 }
