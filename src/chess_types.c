@@ -71,6 +71,12 @@ GameState* make_move(const GameState* gs, Move move) {
 
 	new_gs->prev_state = (GameState*)gs;
 	Piece piece = *piece_at(gs, move.from);
+	if(piece.piecetype!=ANTEATER) {
+		new_gs->anteater_ate == false;
+	}
+	else if(piece_at(gs,move.to)->piecetype == ANT) {
+		new_gs->anteater_ate == true;
+	}
 
 	if (square_equals(move.to, make_square(7, A))) {
 		new_gs->yellow_qscastle = false;
@@ -152,6 +158,8 @@ GameState* make_move(const GameState* gs, Move move) {
 
 	replace_piece(new_gs, piece, move.to);
 	replace_piece(new_gs, make_piece(EMPTY, YELLOW), move.from);
+
+	new_gs->turn = !new_gs->turn;
 
 	return new_gs;
 }

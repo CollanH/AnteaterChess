@@ -86,4 +86,5 @@ const Piece* piece_at(const GameState* gs, Square square);
 Piece make_piece(PieceType pt, Color color);
 void replace_piece(GameState* gs, Piece piece, Square square);
 GameState initalize_empty_GameState();
+bool square_equals(Square a, Square b);
 #endif /* CHESS_TYPES_H */

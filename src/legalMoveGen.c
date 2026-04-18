@@ -2,6 +2,7 @@
 // Created by clair on 4/9/2026.
 //
 #include "chess_types.h"
+#include "stdio.h"
 /*
  * 1. Find theoretical moves as if the board was empty
  * 2. Find moves that don't overlap "your" pieces
@@ -85,6 +86,8 @@ MoveList legalMoveGen(GameState *gs) {
 
 
 void squareToMoves(const GameState *gs, Square square, MoveList* moveList) {
+	if(gs->turn != gs->board[square.rank][square.file].color)
+		return;
 	PieceType pt = gs->board[square.rank][square.file].piecetype;
 	if(pt == EMPTY)
 		return;
@@ -98,6 +101,9 @@ void squareToMoves(const GameState *gs, Square square, MoveList* moveList) {
 			break;
 		case ANTEATER:
 			anteaterMoves(gs, square, moveList);
+			for(int i = 0; i < moveList->count; i++) {
+				printf("%d %d\n", moveList->moves[i].to.file, moveList->moves[i].to.rank);
+			}
 			break;
 		case BISHOP:
 			bishopMoves(gs, square, moveList);
@@ -596,6 +602,7 @@ void anteaterMoves(const GameState *gs, Square square, MoveList *list) {
 			}
 		}
 	}
+
 }
 void rookMoves(const GameState *pState, Square square, MoveList *list) {
 	int dr[4] = {-1, 1, 0, 0};
@@ -724,8 +731,17 @@ void antMoves(const GameState *gs, Square square, MoveList *list) {
 		if (gs->en_passant_square.rank == square.rank + dir &&
 			(gs->en_passant_square.file == square.file - 1 ||
 			 gs->en_passant_square.file == square.file + 1)) {
-			Move move = {square, gs->en_passant_square};
-			append_move(list, move);
-			 }
+
+			Square captured_square = make_square(gs->en_passant_square.rank - dir,
+												 gs->en_passant_square.file);
+
+			Piece captured_piece = *piece_at(gs, captured_square);
+
+			if (captured_piece.piecetype == ANT &&
+				captured_piece.color != myColor) {
+				Move move = {square, gs->en_passant_square};
+				append_move(list, move);
+				}
+		}
 	}
 }

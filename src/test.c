@@ -1,5 +1,6 @@
 #include "chess_types.h"
 #include "test.h"
+#include "stdlib.h"
 
 #include "legalMoveGen.h"
 
@@ -31,6 +32,15 @@ GameState string_to_gs(char board_string[81]) {
 				make_piece(EMPTY, YELLOW);
 
 		gs.board[rank][file] = piece;
+		gs.anteater_ate = false;
+		gs.blue_kscastle = true;
+		gs.blue_qscastle = true;
+		gs.yellow_kscastle = true;
+		gs.yellow_qscastle = true;
+		gs.en_passant_square = make_square(-1,-1);
+		gs.prev_state = NULL;
+		gs.turn = YELLOW;
+
 
 		file++;
 
@@ -230,15 +240,216 @@ void test_pinned_piece() {
 
 
 
+
+
 // ===== MAIN =====
+#include <stdio.h>
+#include <stdbool.h>
+#include <ctype.h>
+#include <string.h>
+#include <stdlib.h>
 
-int main() {
-    test_rook_moves();
-    test_rook_blocked();
-    test_rook_capture();
-    test_knight_moves();
-    test_king_into_check();
-    test_pinned_piece();
+#include "chess_types.h"
+#include "legalMoveGen.h"
 
-    return 0;
+// from your project somewhere
+
+// ----------------------------------------
+// helpers
+// ----------------------------------------
+
+static char piece_to_char(Piece p) {
+	if (p.piecetype == EMPTY) return '.';
+
+	char c = '?';
+	switch (p.piecetype) {
+		case KING:   c = 'K'; break;
+		case QUEEN:  c = 'Q'; break;
+		case ROOK:   c = 'R'; break;
+		case BISHOP: c = 'B'; break;
+		case KNIGHT: c = 'N'; break;
+		case ANT:    c = 'P'; break;   // change to 'A' if you want anteaters shown as A
+	    case ANTEATER:   c = 'A'; break;   // change to 'A' if you want anteaters shown as A
+		default:     c = '?'; break;
+	}
+
+	if (p.color == BLUE) {
+		c = (char)tolower(c);
+	}
+	return c;
 }
+
+static int file_char_to_index(char c) {
+	c = (char)toupper(c);
+	if (c < 'A' || c > 'J') return -1;
+	return c - 'A';
+}
+
+static bool parse_square(const char* str, Square* out) {
+	// accepts things like A0, j7, E3
+	if (!str || strlen(str) < 2) return false;
+
+	int file = file_char_to_index(str[0]);
+	if (file == -1) return false;
+
+	if (!isdigit((unsigned char)str[1])) return false;
+	int rank = str[1] - '0';
+
+	if (rank < 0 || rank > 7) return false;
+
+	*out = make_square(rank, file);
+	return true;
+}
+
+static bool square_in_move_list(Square sq, MoveList list) {
+	for (int i = 0; i < list.count; i++) {
+		if (square_equals(list.moves[i].to, sq)) {
+			return true;
+		}
+	}
+	return false;
+}
+
+static void print_board(GameState* gs) {
+	printf("\n     A  B  C  D  E  F  G  H  I  J\n");
+	printf("   ---------------------------------\n");
+
+	for (int r = 0; r < 8; r++) {
+		printf(" %d |", r);
+		for (int f = 0; f < 10; f++) {
+			Piece p = *piece_at(gs, make_square(r, f));
+			printf(" %c ", piece_to_char(p));   // ALWAYS 3 chars
+		}
+		printf("|\n");
+	}
+	printf("   ---------------------------------\n");
+}
+
+static void print_board_with_moves(GameState* gs, MoveList moves, Square hovered) {
+	printf("\n     A  B  C  D  E  F  G  H  I  J\n");
+	printf("   --------------------------------\n");
+
+	for (int r = 0; r < 8; r++) {
+		printf(" %d |", r);
+		for (int f = 0; f < 10; f++) {
+			Square sq = make_square(r, f);
+			Piece p = *piece_at(gs, sq);
+
+			if (square_equals(sq, hovered)) {
+				printf("[%c]", piece_to_char(p));   // exactly 3 chars
+			}
+			else if (square_in_move_list(sq, moves)) {
+				printf(" * ");                     // exactly 3 chars
+			}
+			else {
+				printf(" %c ", piece_to_char(p));  // exactly 3 chars
+			}
+		}
+		printf("|\n");
+	}
+
+	printf("   --------------------------------\n");
+}
+
+static bool find_move_to_square(MoveList moves, Square to, Move* out_move) {
+	for (int i = 0; i < moves.count; i++) {
+		if (square_equals(moves.moves[i].to, to)) {
+			*out_move = moves.moves[i];
+			return true;
+		}
+	}
+	return false;
+}
+
+// ----------------------------------------
+// main interactive test loop
+// ----------------------------------------
+
+void interactive_move_test(GameState* start) {
+	GameState* gs = start;
+	char input[64];
+
+	while (1) {
+		print_board(gs);
+
+		printf("\nHover square (example E6), or type q to quit: ");
+		if (!fgets(input, sizeof(input), stdin)) {
+			break;
+		}
+
+		input[strcspn(input, "\n")] = '\0';
+
+		if (strcmp(input, "q") == 0 || strcmp(input, "Q") == 0) {
+			break;
+		}
+
+		Square hovered;
+		if (!parse_square(input, &hovered)) {
+			printf("Invalid square.\n");
+			continue;
+		}
+
+		Piece hovered_piece = *piece_at(gs, hovered);
+		if (hovered_piece.piecetype == EMPTY) {
+			printf("No piece on that square.\n");
+			continue;
+		}
+
+		MoveList moves = findPossibleMoves(gs, hovered);
+
+		if (moves.count == 0) {
+			printf("That piece has no legal moves.\n");
+			continue;
+		}
+
+		print_board_with_moves(gs, moves, hovered);
+
+		printf("\nLegal moves from %s:\n", input);
+		for (int i = 0; i < moves.count; i++) {
+			printf("  -> %c%d\n", 'A' + moves.moves[i].to.file, moves.moves[i].to.rank);
+		}
+
+		printf("\nMove to: ");
+		if (!fgets(input, sizeof(input), stdin)) {
+			break;
+		}
+
+		input[strcspn(input, "\n")] = '\0';
+
+		Square destination;
+		if (!parse_square(input, &destination)) {
+			printf("Invalid destination square.\n");
+			continue;
+		}
+
+		Move chosen_move;
+		if (!find_move_to_square(moves, destination, &chosen_move)) {
+			printf("That is not a legal move for the selected piece.\n");
+			continue;
+		}
+
+		gs = make_move(gs, chosen_move);
+	}
+}
+
+int main(void) {
+	GameState* gs = malloc(sizeof(GameState));
+	char test1[81] =
+		".........."
+		".........."
+		".........."
+		".........."
+		".........."
+		".........."
+		".........."
+		".....K...R";
+	*gs = string_to_gs(
+		test1
+	);
+
+
+	interactive_move_test(gs);
+	return 0;
+}
+
+
