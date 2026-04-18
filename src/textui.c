@@ -63,10 +63,10 @@ static char pieceChar(Piece piece) {
     return (piece.color == YELLOW) ? base : (char)tolower((unsigned char)base);
 }
 
-//takes square struct to write to a string
+//takes square struct to write to a string, converts internal rank (0-7) to display rank (1-8)
 static void squaretoString(Square sq, char *buf) {
-    buf[0] = filetoChar(sq.file); //writes letter
-    buf[1] = (char)('0' + sq.rank); //writes number
+    buf[0] = filetoChar(sq.file);
+    buf[1] = (char)('0' + (BOARD_ROWS - sq.rank));
     buf[2] = '\0';
 }
 
@@ -188,9 +188,10 @@ void displayBoard(GameState *gs, int yellowSecs, int blueSecs, Color humanColor)
     printf("\n");
 
     //printing if castling is allowed for either player
+    //TODO: Jordan - update to yellow_kscastle/yellow_qscastle/blue_kscastle/blue_qscastle
     printf("  Castling -- Yellow: %s Blue: %s\n",
-        gs->yellow_castled ? "done" : "available",
-        gs->blue_castled ? "done" : "available");
+        (gs->yellow_kscastle || gs->yellow_qscastle) ? "available" : "done",
+        (gs->blue_kscastle   || gs->blue_qscastle)   ? "available" : "done");
 
     //printing en passant square if one is currently active, if rank ==0: no en passant
     if (gs->en_passant_square.rank != 0) {
@@ -269,18 +270,19 @@ Move getMove(GameState *gs) {
     }   
 
 
-    //parse move in format of F2 F4
+    //parse move in format of F2 F4, convert display rank (1-8) to internal rank (0-7)
     if (sscanf(trimmed, "%7s %7s", fromTok, toTok) == 2) {
-        int fromFile = chartoFile(fromTok[0]);
-        int fromRank = fromTok[1] - '0';
-        int toFile = chartoFile(toTok[0]);
-        int toRank = toTok[1] - '0';
+        int fromFile  = chartoFile(fromTok[0]);
+        int fromRank  = fromTok[1] - '0';
+        int toFile    = chartoFile(toTok[0]);
+        int toRank    = toTok[1] - '0';
 
-        if (fromFile >= 0 && fromRank >= 1 && fromRank <= 8 && toFile >= 0 && toRank >= 8) {
-            result.from.file= (File)fromFile;
-            result.from.rank = fromRank;
-            result.to.file= (File)toFile;
-            result.to.rank = toRank;
+        if (fromFile >= 0 && fromRank >= 1 && fromRank <= 8 &&
+            toFile   >= 0 && toRank   >= 1 && toRank   <= 8) {
+            result.from.file = (File)fromFile;
+            result.from.rank = BOARD_ROWS - fromRank;
+            result.to.file   = (File)toFile;
+            result.to.rank   = BOARD_ROWS - toRank;
             return result;
         }
     }

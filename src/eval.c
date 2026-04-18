@@ -1,6 +1,6 @@
 #include "eval.h"
 #include "chess_types.h"
-//#include "stdlib.h" for testing & debugging
+#include <stdlib.h>
 //#include "stdio.h" for testing & debugging
 
 /*HELPER FUNCTIONS DECLARATIONS*/
