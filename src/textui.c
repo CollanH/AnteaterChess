@@ -46,8 +46,10 @@ static char pieceChar(Piece piece) {
             break;
         case BISHOP:
             base = 'B';
+            break; 
         case KNIGHT:
             base = 'N';
+            break; 
         case ANT:
             base = 'P'; //using p for pawn
             break;
@@ -112,6 +114,7 @@ Color colorMenu(void) {
 }
 
 //choosing difficulty of AI : return maps to negamax search
+
 int difficultyMenu(void) {
     int choice;
     printf("\n   Choose your AI's difficulty:\n");
@@ -135,8 +138,19 @@ int clockMenu(void) {
     printf("   > ");
     if (scanf("%d", &choice) != 1) choice = 1;
     while (getchar() != '\n');
-    if (choice < 1 || choice > 3) choice = 1;
-    return choice;
+    if (choice < 1 || choice > 3) choice = 2;
+
+    //converting to seconds
+    switch (choice) {
+        case 1: 
+            return 5*60; 
+        case 2: 
+            return 10*60; 
+        case 3: 
+            return 15*60; 
+        default: 
+            return 10*60; 
+    }
 }
 
 
@@ -187,11 +201,34 @@ void displayBoard(GameState *gs, int yellowSecs, int blueSecs, Color humanColor)
         printf("  (your turn)");
     printf("\n");
 
-    //printing if castling is allowed for either player
-    //TODO: Jordan - update to yellow_kscastle/yellow_qscastle/blue_kscastle/blue_qscastle
-    printf("  Castling -- Yellow: %s Blue: %s\n",
-        (gs->yellow_kscastle || gs->yellow_qscastle) ? "available" : "done",
-        (gs->blue_kscastle   || gs->blue_qscastle)   ? "available" : "done");
+    //printing if castling is allowed for either player castling status 
+    
+    printf("  Castling:\n"); 
+    //yellow status
+    printf("  Yellow: "); 
+    if (gs->yellow_kscastle && gs->yellow_qscastle) {
+        printf("Kingside + Queenside available\n"); 
+    } else if (gs->yellow_kscastle) {
+      printf("Kingside only\n"); 
+    } else if (gs->yellow_qscastle) {
+        printf("Queenside only\n"); 
+    } else {
+        printf("None available\n"); 
+    }
+
+    //blue status
+    printf("  Blue: "); 
+    if (gs->blue_kscastle && gs->blue_qscastle) {
+        printf("Kingside + Queenside available\n"); 
+    } else if (gs->blue_kscastle) {
+        printf("Kingside only\n"); 
+    } else if (gs->blue_qscastle) {
+        printf("Queenside only\n"); 
+    } else {
+        printf("None available\n"); 
+    }
+
+    
 
     //printing en passant square if one is currently active, if rank ==0: no en passant
     if (gs->en_passant_square.rank != 0) {
@@ -206,7 +243,7 @@ void displayBoard(GameState *gs, int yellowSecs, int blueSecs, Color humanColor)
 
     //printing if there is an undo
     if (gs->prev_state != NULL)
-        printf("  u = undo available]\n");
+        printf("  [u = undo available]\n");
 }
 
 //prints all legal destination for piece the player selected 
