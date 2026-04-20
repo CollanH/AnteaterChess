@@ -1,0 +1,14 @@
+Anteater Chess - Alpha Release
+ChessEaters, EECS 22L, UC Irvine
+April 2026
+Version 1.0 (Alpha)
+
+Authors: Shawn Harrington, Claire Lin, Jordan Le, Tara Pai, Yani Montanez, Aurea Juarez
+
+Anteater Chess is a modified version of chess played on a 10x8 board with two extra
+pieces called Anteaters. The goal is to checkmate the opponent's king. The program
+supports user vs user, user vs AI, and AI vs AI matchups with a chess clock and
+difficulty selection.
+
+To install, type "make". For detailed instructions see INSTALL.
+For how to play, refer to doc/Chess_UserManual.pdf.

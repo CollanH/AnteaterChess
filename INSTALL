@@ -1,0 +1,24 @@
+INSTALL - Anteater Chess
+
+Requirements:
+  Linux (tested on UCI EECS servers: Bondi, Laguna, Crystalcove, Zuma, Balboa, Doheny)
+  GCC 9.0 or later
+  GNU Make
+  OpenGL and X11 (pre-installed on UCI servers)
+
+To build from source:
+  tar -xvzf Chess_Alpha_src.tar.gz
+  cd chess
+  make
+
+To run:
+  bin/chess
+
+To run tests:
+  make test
+
+To clean build files:
+  make clean
+
+To uninstall, just delete the directory:
+  rm -rf chess/
