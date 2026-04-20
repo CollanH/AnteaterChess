@@ -31,10 +31,14 @@ test: $(TEST_SRCS)
 clean:
 	rm -f $(BIN)/chess $(BIN)/textChess $(BIN)/test
 
-tar:
+tar: $(BIN)/chess
 	tar -czf Chess_Alpha_src.tar.gz \
 	    --exclude='$(BIN)' \
 	    --exclude='*.o' \
 	    --exclude='*.tar.gz' \
 	    --exclude='chess_log.txt' \
 	    README INSTALL COPYRIGHT Makefile src/ doc/
+	tar -czf Chess_Alpha.tar.gz \
+	    README INSTALL COPYRIGHT \
+	    $(BIN)/chess \
+	    doc/Chess_UserManual.pdf
