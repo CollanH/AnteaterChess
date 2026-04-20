@@ -16,12 +16,15 @@ int clockMenu(void);
 
 void displayBoard(GameState *gs, int yellowSecs, int blueSecs, Color humanColor);
 void dispLegalMoves(MoveList *moves);
+PieceType dispPromotion(void); 
+
 
 Move getMove(GameState *gs);
 
 void dispWin(Color winner);
 void dispStalemate(void);
 void dispTimeout(Color loser);
+
 
 void aiMove(Move move);
 void printError(const char *msg);

@@ -2,6 +2,7 @@
 #include "legalMoveGen.h"
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_ttf.h>
+#include <SDL2/SDL_image.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -37,6 +38,20 @@ static SDL_Renderer *renderer = NULL;
 static TTF_Font *font = NULL;
 static TTF_Font *smallFont = NULL;
 
+
+//textures
+static SDL_Texture *pieceTextures[2][8]; 
+static SDL_Texture *squareTextures[2]; 
+
+//pawn promotion 
+static PieceType promotionPiece = QUEEN; //which piece currently highlighted
+static int promotionPending = 0; //set to 1 when pawn reaches back rank 
+
+//forward declarations
+static void renderGameScreen(int showClocks); 
+static void renderEndScreen(const char *message); 
+static void renderPromotionScreen(void); 
+
 // current gui/game state
 static Screen currentScreen = SCREEN_MATCHUP;
 static GameState *currentGameState = NULL;
@@ -63,11 +78,93 @@ static int undoBtnY = 0;
 static int undoBtnW = 160;
 static int undoBtnH = 50;
 
-// promotion menu selection
-static int promotionPiece = QUEEN;
-
 // status/error message shown in the right panel
 static char statusMsg[128] = "";
+
+//picture file names
+static const char *pieceFileNames[2][8] = {
+    
+    {"", "../board_images/yking.png", "../board_images/yqueen.png", "../board_images/yanteater.png", "../board_images/ybishop.png", "../board_images/yknight.png", "../board_images/yrook.png", "../board_images/yant.png" }, 
+    {"", "../board_images/bking.png", "../board_images/bqueen.png", "../board_images/banteater.png", "../board_images/bbishop.png", "../board_images/bknight.png", "../board_images/brook.png", "../board_images/bant.png"}
+};
+
+
+//loading piece png and square png 
+static void loadPieceTextures(void) {
+    int color, pieceType; 
+
+    for (color = 0; color<2; color++) 
+        for (pieceType =0; pieceType < 8; pieceType++)
+            pieceTextures[color][pieceType] = NULL; 
+    squareTextures[0] = NULL;
+    squareTextures[1] = NULL; 
+
+    //loading piece png
+    for (color=0; color<2; color++) {
+        for (pieceType=1; pieceType<8; pieceType++) {
+            pieceTextures[color][pieceType] = IMG_LoadTexture(renderer, pieceFileNames[color][pieceType]);
+
+            if (!pieceTextures[color][pieceType]) {
+                fprintf(stderr, "Warning: could not load %s: %s\n", pieceFileNames[color][pieceType], IMG_GetError()); 
+            } 
+        }
+    }
+
+    //board square pngs
+    squareTextures[0] = IMG_LoadTexture(renderer, "../board_images/ysquare.png"); 
+    squareTextures[1] = IMG_LoadTexture(renderer, "../board_images/bsquare.png"); 
+
+    if(!squareTextures[0])
+        fprintf(stderr, "Warning: could not loag ../board_images/ysquare.png\n"); 
+    if(!squareTextures[1])
+        fprintf(stderr, "Warning: could not load ../board_images/bsquare.png\n"); 
+}
+
+//releasing textures from memory 
+static void freePieceTextures(void) {
+    int color, pieceType; 
+    for (color=0 ; color<2; color++){
+        for (pieceType = 0; pieceType< 8; pieceType++) {
+            if (pieceTextures[color][pieceType]) {
+                SDL_DestroyTexture(pieceTextures[color][pieceType]); 
+                pieceTextures[color][pieceType] = NULL; 
+            }
+        }
+    }
+
+    if (squareTextures[0]) {
+        SDL_DestroyTexture(squareTextures[0]); 
+        squareTextures[0] = NULL; 
+
+    }
+    if(squareTextures[1]) {
+        SDL_DestroyTexture(squareTextures[1]); 
+        squareTextures[1] = NULL; 
+    }
+}
+
+//drawing board square at pixel position, if png load fails->falls back to og rectangle
+static void drawSquare(int x, int y, int squareIndex) {
+    SDL_Rect d; //where the rectangle will be drawn 
+    d.x = x; 
+    d.y = y; 
+    d.w = SQUARE_SIZE; 
+    d.h = SQUARE_SIZE; 
+
+    if(squareTextures[squareIndex]) {
+        SDL_RenderCopy(renderer, squareTextures[squareIndex], NULL, &d); 
+    } else {
+        if (squareIndex == 0) {
+            SDL_SetRenderDrawColor(renderer, 245,230,140,255); 
+        } else {
+            SDL_SetRenderDrawColor(renderer, 70,120,190,255); 
+        }
+
+        SDL_RenderFillRect(renderer, &d);
+    }
+}
+
+
 
 // draw a line of text using sdl_ttf
 static void drawText(const char *text, int x, int y, SDL_Color color, TTF_Font *f)
@@ -101,6 +198,49 @@ static void drawText(const char *text, int x, int y, SDL_Color color, TTF_Font *
     SDL_DestroyTexture(texture);
     SDL_FreeSurface(surface);
 }
+//drawing piece from png 
+static void drawPiece(Piece p, int x, int y) {
+    int colorIndex; 
+    SDL_Texture *text; 
+    SDL_Rect d; 
+
+    if(p.piecetype == EMPTY) 
+        return; 
+    colorIndex = (p.color == YELLOW) ? 0:1; 
+    text = pieceTextures[colorIndex][p.piecetype]; 
+
+    if(text) {
+        //drwaing to fit inside square
+        d.x = x+4; 
+        d.y = y+4; 
+        d.w = SQUARE_SIZE -8; 
+        d.h = SQUARE_SIZE -8; 
+        SDL_RenderCopy(renderer,text,NULL, &d); 
+    } else {
+        //if does not draw inside square, then colored letter
+        char txt[2]; 
+        SDL_Color c; 
+
+        switch (p.piecetype) {
+            case KING: txt[0] = 'K'; break; 
+            case QUEEN: txt[0] = 'Q'; break; 
+            case BISHOP: txt[0] = 'B'; break; 
+            case KNIGHT: txt[0] = 'N'; break; 
+            case ROOK: txt[0] = 'R'; break; 
+            case ANT: txt[0] = 'A'; break; 
+            case ANTEATER: txt[0] = 'T'; break; 
+            default: txt[0] = '?'; break; 
+        }
+
+        txt[1] = '\0';
+
+        c = (p.color ==YELLOW) ? (SDL_Color) {245,210,60,255} : (SDL_Color) {70,140,255,255};
+
+        drawText(txt, x+30, y+25, c, font); 
+    }
+}
+
+
 
 // draw a filled rectangle
 static void fillRect(int x, int y, int w, int h, Uint8 r, Uint8 g, Uint8 b)
@@ -358,11 +498,105 @@ static void renderGameScreen(int showClocks)
     SDL_RenderPresent(renderer);
 }
 
-// draw the promotion menu screen
-static void renderPromotionScreen(void)
-{
-    const char *options[] = {"Queen", "Rook", "Bishop", "Knight"};
-    renderMenuScreen("PROMOTE PAWN", options, 4, promotionPiece);
+//pawn promotion screen : popup w/ choices q,r,b,n
+static void renderPromotionScreen(void) {
+    PieceType choices[4] = {QUEEN, ROOK, BISHOP, KNIGHT}; 
+    const char *labels[4] = {"Queen", "Rook", "Bishop", "Knight"}; 
+    int i; 
+
+    SDL_SetRenderDrawColor(renderer, 30,30,30,255); 
+    SDL_RenderClear(renderer); 
+
+    //backgroudn box
+    fillRect(190,200,800,360,245,245,245); 
+    drawText("Promote Pawn", 390,220, (SDL_Color){0,0,0, 255}, font); 
+    drawText("Click the piece you want to promote to:", 350, 260, (SDL_Color) {100,100,100,255}, smallFont); 
+
+    for (i = 0; i < 4; i++) {
+        int buttonX = 210+i*190; 
+        int buttonY = 290; 
+        int buttonW = 170; 
+        int buttonH = 200; 
+        int isHovered = (promotionPiece == choices[i]); 
+        SDL_Texture *text; 
+        SDL_Rect d; 
+        Piece preview; 
+
+        //highlighting on hover
+        if (isHovered) {
+            fillRect(buttonX-4, buttonY-4, buttonW+8, buttonH+8, 50,150,255); 
+        }
+
+        //button background
+        fillRect(buttonX, buttonY, buttonW, buttonH, 
+            isHovered ? 210: 230, 
+            isHovered ? 230: 230, 
+            255);
+            
+        //drawing piece using color 
+        preview.piecetype = choices[i]; 
+        preview.color = currentGameState -> turn; 
+
+        text = pieceTextures[(preview.color == YELLOW) ? 0: 1][choices[i]]; 
+
+        if (text) {
+            d.x = buttonX + 15; 
+            d.y = buttonY + 10; 
+            d.w = buttonW -30; 
+            d.h = buttonH -55; 
+            SDL_RenderCopy(renderer, text, NULL, &d); 
+        } else {
+            drawText(labels[i], buttonX + 40, buttonY + 60, (SDL_Color){0,0,0,255}, font); 
+        }
+
+        //piece label at bottom
+        drawText(labels[i], buttonX + (buttonW /2) -20, buttonY + buttonH-35, (SDL_Color){0,0,0,255}, smallFont); 
+
+
+    }
+    SDL_RenderPresent(renderer); 
+}
+
+//displaying promotiion screen that waits for player to choose: returns PieceType player chose
+PieceType dispPromotion(void) {
+    PieceType choices[4] = {QUEEN, ROOK, BISHOP, KNIGHT}; 
+    SDL_Event event; 
+    int i; 
+
+    currentScreen = SCREEN_PROMOTION; 
+    promotionPiece = QUEEN; //default selection if nothing hvoered yet
+
+    while(1) {
+        renderPromotionScreen(); 
+        while(SDL_PollEvent(&event)) {
+            if (event.type == SDL_QUIT)
+                return QUEEN; 
+
+            //updating highlight 
+            if (event.type == SDL_MOUSEMOTION) {
+                for(i = 0; i < 4; i++) {
+                    int buttonX = 210+i*190; 
+                    if(pointInRect(event.motion.x, event.motion.y, buttonX, 290,170,200)) {
+                        promotionPiece = choices[i]; 
+                    }
+                }
+            }
+
+            //reutrn chosen piece
+            if(event.type == SDL_MOUSEBUTTONDOWN && event.button.button == SDL_BUTTON_LEFT) {
+                for (i=0; i<4; i++) {
+                    int buttonX = 210 + i*190; 
+                    if(pointInRect(event.button.x, event.button.y, buttonX, 290, 170,200)) {
+                        currentScreen = SCREEN_GAME; 
+                        return choices[i]; 
+                    }
+                }
+            }
+        }
+
+        SDL_Delay(16); //slows loop down 
+    }
+
 }
 
 // draw the game-over screen
@@ -378,17 +612,26 @@ static void renderEndScreen(const char *message)
     drawText("Click anywhere to return to menu", 320, 440, (SDL_Color){100, 100, 100, 255}, smallFont);
 
     SDL_RenderPresent(renderer);
+
 }
 
 // initialize sdl and fonts
 int guiInit(void)
 {
+
+    SDL_SetHint(SDL_HINT_RENDER_DRIVER, "software"); 
+
     if (SDL_Init(SDL_INIT_VIDEO) < 0) {
         return 0;
     }
 
     if (TTF_Init() < 0) {
         return 0;
+    }
+
+    if (!(IMG_Init(IMG_INIT_PNG) &  IMG_INIT_PNG)) {
+        fprintf(stderr, "SDL_image PNG failed: %s\n", IMG_GetError()); 
+        return 0; 
     }
 
     window = SDL_CreateWindow("Anteater Chess",
@@ -401,17 +644,33 @@ int guiInit(void)
         return 0;
     }
 
-    renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
+    renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_SOFTWARE);
     if (!renderer) {
         return 0;
     }
 
-    font = TTF_OpenFont("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 28);
-    smallFont = TTF_OpenFont("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 18);
+    //try common font paths across distros
+    const char *fontPaths[] = {
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        "/usr/share/fonts/dejavu/DejaVuSans.ttf",
+        "/usr/share/fonts/TTF/DejaVuSans.ttf",
+        NULL
+    };
+
+    int i; 
+    for (i = 0; fontPaths[i] !=NULL; i++) {
+        font = TTF_OpenFont(fontPaths[i], 28); 
+        smallFont = TTF_OpenFont(fontPaths[i], 19); 
+
+        if(font && smallFont) 
+            break; 
+    }
 
     if (!font || !smallFont) {
         return 0;
     }
+
+    loadPieceTextures(); //putting all piece and png into memory
 
     return 1;
 }
