@@ -464,11 +464,17 @@ int main(void) {
 
 	//run automated tests
 	printf("\nRunning tests...\n");
+	printf("\n--- Rook moves (open board) ---\n");
 	test_rook_moves();
+	printf("\n--- Rook blocked by friendly piece ---\n");
 	test_rook_blocked();
+	printf("\n--- Rook captures enemy piece ---\n");
 	test_rook_capture();
+	printf("\n--- Knight moves (ignores blockers) ---\n");
 	test_knight_moves();
+	printf("\n--- King cannot move into check ---\n");
 	test_king_into_check();
+	printf("\n--- Pinned piece cannot move ---\n");
 	test_pinned_piece();
 
 	printf("\nAll tests complete.\n");
