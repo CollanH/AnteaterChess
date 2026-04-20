@@ -433,22 +433,45 @@ void interactive_move_test(GameState* start) {
 }
 
 int main(void) {
-	GameState* gs = malloc(sizeof(GameState));
-	char test1[81] =
-		".........."
-		".........."
-		".........."
-		".........."
-		".........."
-		".........."
-		".........."
-		".....K...R";
-	*gs = string_to_gs(
-		test1
-	);
+	GameState gs = initalize_empty_GameState();
 
+	//set up initial board
+	gs.board[0][A] = make_piece(ROOK,     BLUE);
+	gs.board[0][B] = make_piece(KNIGHT,   BLUE);
+	gs.board[0][C] = make_piece(BISHOP,   BLUE);
+	gs.board[0][D] = make_piece(ANTEATER, BLUE);
+	gs.board[0][E] = make_piece(QUEEN,    BLUE);
+	gs.board[0][F] = make_piece(KING,     BLUE);
+	gs.board[0][G] = make_piece(ANTEATER, BLUE);
+	gs.board[0][H] = make_piece(BISHOP,   BLUE);
+	gs.board[0][I] = make_piece(KNIGHT,   BLUE);
+	gs.board[0][J] = make_piece(ROOK,     BLUE);
+	for (int f = 0; f < 10; f++) gs.board[1][f] = make_piece(ANT, BLUE);
+	for (int f = 0; f < 10; f++) gs.board[6][f] = make_piece(ANT, YELLOW);
+	gs.board[7][A] = make_piece(ROOK,     YELLOW);
+	gs.board[7][B] = make_piece(KNIGHT,   YELLOW);
+	gs.board[7][C] = make_piece(BISHOP,   YELLOW);
+	gs.board[7][D] = make_piece(ANTEATER, YELLOW);
+	gs.board[7][E] = make_piece(QUEEN,    YELLOW);
+	gs.board[7][F] = make_piece(KING,     YELLOW);
+	gs.board[7][G] = make_piece(ANTEATER, YELLOW);
+	gs.board[7][H] = make_piece(BISHOP,   YELLOW);
+	gs.board[7][I] = make_piece(KNIGHT,   YELLOW);
+	gs.board[7][J] = make_piece(ROOK,     YELLOW);
 
-	interactive_move_test(gs);
+	printf("Initial board:\n");
+	print_board(&gs);
+
+	//run automated tests
+	printf("\nRunning tests...\n");
+	test_rook_moves();
+	test_rook_blocked();
+	test_rook_capture();
+	test_knight_moves();
+	test_king_into_check();
+	test_pinned_piece();
+
+	printf("\nAll tests complete.\n");
 	return 0;
 }
 
