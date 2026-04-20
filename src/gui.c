@@ -383,6 +383,8 @@ static void renderEndScreen(const char *message)
 // initialize sdl and fonts
 int guiInit(void)
 {
+    SDL_SetHint(SDL_HINT_RENDER_DRIVER, "software");
+
     if (SDL_Init(SDL_INIT_VIDEO) < 0) {
         return 0;
     }
