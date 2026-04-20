@@ -406,8 +406,19 @@ int guiInit(void)
         return 0;
     }
 
-    font = TTF_OpenFont("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 28);
-    smallFont = TTF_OpenFont("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 18);
+    //try common font paths across distros
+    const char *fontPaths[] = {
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        "/usr/share/fonts/dejavu/DejaVuSans.ttf",
+        "/usr/share/fonts/TTF/DejaVuSans.ttf",
+        NULL
+    };
+    int i;
+    for (i = 0; fontPaths[i] != NULL; i++) {
+        font      = TTF_OpenFont(fontPaths[i], 28);
+        smallFont = TTF_OpenFont(fontPaths[i], 18);
+        if (font && smallFont) break;
+    }
 
     if (!font || !smallFont) {
         return 0;

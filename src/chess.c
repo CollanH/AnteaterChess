@@ -40,6 +40,12 @@ int main()
 
     FILE      *logfile;
 
+    if (!guiInit())
+    {
+        fprintf(stderr, "failed to initialize GUI\n");
+        return 1;
+    }
+
     logfile = fopen("chess_log.txt", "w");
 
     matchup   = matchupMenu();
@@ -195,6 +201,8 @@ int main()
     {
         fclose(logfile);
     }
+
+    guiQuit();
 
     return 0;
 }
