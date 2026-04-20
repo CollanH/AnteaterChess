@@ -32,13 +32,13 @@ clean:
 	rm -f $(BIN)/chess $(BIN)/textChess $(BIN)/test
 
 tar: $(BIN)/chess
-	tar -czf Chess_Alpha_src.tar.gz \
-	    --exclude='$(BIN)' \
-	    --exclude='*.o' \
-	    --exclude='*.tar.gz' \
-	    --exclude='chess_log.txt' \
-	    README INSTALL COPYRIGHT Makefile src/ doc/
-	tar -czf Chess_Alpha.tar.gz \
-	    README INSTALL COPYRIGHT \
-	    $(BIN)/chess \
-	    doc/Chess_UserManual.pdf
+	cd .. && tar -czf chess/Chess_Alpha_src.tar.gz \
+	    --exclude='chess/$(BIN)' \
+	    --exclude='chess/*.o' \
+	    --exclude='chess/*.tar.gz' \
+	    --exclude='chess/chess_log.txt' \
+	    chess/README chess/INSTALL chess/COPYRIGHT chess/Makefile chess/src/ chess/doc/
+	cd .. && tar -czf chess/Chess_Alpha.tar.gz \
+	    chess/README chess/INSTALL chess/COPYRIGHT \
+	    chess/$(BIN)/chess \
+	    chess/doc/Chess_UserManual.pdf
