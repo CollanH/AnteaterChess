@@ -15,8 +15,10 @@ bool inCheck(const GameState *gs, Color color);
 int main()
 {
     GameState  gs;
-    GameState  prevGs;
-    int        hasPrev;
+    GameState  prevGs;    //TODO: wire up undo signal from GUI with Oreo
+    int        hasPrev;   //TODO: wire up undo signal from GUI with Oreo
+    (void)prevGs;
+    (void)hasPrev;
 
     int        matchup;
     Color      humanColor;

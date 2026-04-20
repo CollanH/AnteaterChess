@@ -72,10 +72,10 @@ GameState* make_move(const GameState* gs, Move move) {
 	new_gs->prev_state = (GameState*)gs;
 	Piece piece = *piece_at(gs, move.from);
 	if(piece.piecetype!=ANTEATER) {
-		new_gs->anteater_ate == false;
+		new_gs->anteater_ate = false;
 	}
 	else if(piece_at(gs,move.to)->piecetype == ANT) {
-		new_gs->anteater_ate == true;
+		new_gs->anteater_ate = true;
 	}
 
 	if (square_equals(move.to, make_square(7, A))) {

@@ -11,7 +11,7 @@ TEXT_SRCS = $(SRC)/textChess.c $(SRC)/strategy.c $(SRC)/eval.c \
 
 TEST_SRCS = $(SRC)/test.c $(SRC)/chess_types.c $(SRC)/legalMoveGen.c
 
-LIBS     = -lGL -lglut -lm
+LIBS     = -lSDL2 -lSDL2_ttf -lm
 
 all: $(BIN)/chess
 
