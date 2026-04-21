@@ -84,12 +84,12 @@ static char statusMsg[128] = "";
 //picture file names
 static const char *pieceFileNames[2][8] = {
     
-    {"", "../board_images/yking.png", "../board_images/yqueen.png", "../board_images/yanteater.png", "../board_images/ybishop.png", "../board_images/yknight.png", "../board_images/yrook.png", "../board_images/yant.png" }, 
-    {"", "../board_images/bking.png", "../board_images/bqueen.png", "../board_images/banteater.png", "../board_images/bbishop.png", "../board_images/bknight.png", "../board_images/brook.png", "../board_images/bant.png"}
+    {"", "../board_images/yking.bmp", "../board_images/yqueen.bmp", "../board_images/yanteater.bmp", "../board_images/ybishop.bmp", "../board_images/yknight.bmp", "../board_images/yrook.bmp", "../board_images/yant.bmp" }, 
+    {"", "../board_images/bking.bmp", "../board_images/bqueen.bmp", "../board_images/banteater.bmp", "../board_images/bbishop.bmp", "../board_images/bknight.bmp", "../board_images/brook.bmp", "../board_images/bant.bmp"}
 };
 
 
-//loading piece png and square png 
+//loading piece bmp and square bmp 
 static void loadPieceTextures(void) {
     int color, pieceType; 
 
@@ -99,7 +99,7 @@ static void loadPieceTextures(void) {
     squareTextures[0] = NULL;
     squareTextures[1] = NULL; 
 
-    //loading piece png
+    //loading piece bmp
     for (color=0; color<2; color++) {
         for (pieceType=1; pieceType<8; pieceType++) {
             pieceTextures[color][pieceType] = IMG_LoadTexture(renderer, pieceFileNames[color][pieceType]);
@@ -110,14 +110,14 @@ static void loadPieceTextures(void) {
         }
     }
 
-    //board square pngs
-    squareTextures[0] = IMG_LoadTexture(renderer, "../board_images/ysquare.png"); 
-    squareTextures[1] = IMG_LoadTexture(renderer, "../board_images/bsquare.png"); 
+    //board square bmps
+    squareTextures[0] = IMG_LoadTexture(renderer, "../board_images/ysquare.bmp"); 
+    squareTextures[1] = IMG_LoadTexture(renderer, "../board_images/bsquare.bmp"); 
 
     if(!squareTextures[0])
-        fprintf(stderr, "Warning: could not loag ../board_images/ysquare.png\n"); 
+        fprintf(stderr, "Warning: could not load ../board_images/ysquare.bmp\n"); 
     if(!squareTextures[1])
-        fprintf(stderr, "Warning: could not load ../board_images/bsquare.png\n"); 
+        fprintf(stderr, "Warning: could not load ../board_images/bsquare.bmp\n"); 
 }
 
 //releasing textures from memory 
@@ -143,7 +143,7 @@ static void freePieceTextures(void) {
     }
 }
 
-//drawing board square at pixel position, if png load fails->falls back to og rectangle
+//drawing board square at pixel position, if bmp load fails->falls back to og rectangle
 static void drawSquare(int x, int y, int squareIndex) {
     SDL_Rect d; //where the rectangle will be drawn 
     d.x = x; 
@@ -198,7 +198,7 @@ static void drawText(const char *text, int x, int y, SDL_Color color, TTF_Font *
     SDL_DestroyTexture(texture);
     SDL_FreeSurface(surface);
 }
-//drawing piece from png 
+//drawing piece from bmp 
 static void drawPiece(Piece p, int x, int y) {
     int colorIndex; 
     SDL_Texture *text; 
@@ -629,10 +629,7 @@ int guiInit(void)
         return 0;
     }
 
-    if (!(IMG_Init(IMG_INIT_PNG) &  IMG_INIT_PNG)) {
-        fprintf(stderr, "SDL_image PNG failed: %s\n", IMG_GetError()); 
-        return 0; 
-    }
+ 
 
     window = SDL_CreateWindow("Anteater Chess",
                               SDL_WINDOWPOS_CENTERED,
@@ -672,7 +669,7 @@ int guiInit(void)
         return 0;
     }
 
-    loadPieceTextures(); //putting all piece and png into memory
+    loadPieceTextures(); //putting all piece and bmp into memory
 
     return 1;
 }
