@@ -24,6 +24,7 @@ void bishopMoves(const GameState *pState, Square square, MoveList *list);
 void knightMoves(const GameState *pState, Square square, MoveList *list);
 void rookMoves(const GameState *pState, Square square, MoveList *list);
 void antMoves(const GameState *pState, Square square, MoveList *list);
+Square find_king_square(const GameState* gs, Color color) ;
 
 void clean_moveList(GameState *gs,MoveList* moveList) {
 	int count = 0;
