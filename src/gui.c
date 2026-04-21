@@ -629,10 +629,7 @@ int guiInit(void)
         return 0;
     }
 
-    if (!(IMG_Init(IMG_INIT_bmp) &  IMG_INIT_bmp)) {
-        fprintf(stderr, "SDL_image bmp failed: %s\n", IMG_GetError()); 
-        return 0; 
-    }
+ 
 
     window = SDL_CreateWindow("Anteater Chess",
                               SDL_WINDOWPOS_CENTERED,
