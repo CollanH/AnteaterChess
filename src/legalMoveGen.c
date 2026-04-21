@@ -101,9 +101,6 @@ void squareToMoves(const GameState *gs, Square square, MoveList* moveList) {
 			break;
 		case ANTEATER:
 			anteaterMoves(gs, square, moveList);
-			for(int i = 0; i < moveList->count; i++) {
-				printf("%d %d\n", moveList->moves[i].to.file, moveList->moves[i].to.rank);
-			}
 			break;
 		case BISHOP:
 			bishopMoves(gs, square, moveList);

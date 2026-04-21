@@ -11,7 +11,11 @@ TEXT_SRCS = $(SRC)/textChess.c $(SRC)/strategy.c $(SRC)/eval.c \
 
 TEST_SRCS = $(SRC)/test.c $(SRC)/chess_types.c $(SRC)/legalMoveGen.c
 
-LIBS     = -lSDL2 -lSDL2_ttf -lm
+SDL2_PREFIX  = $(shell brew --prefix sdl2)
+SDL2T_PREFIX = $(shell brew --prefix sdl2_ttf)
+SDL2I_PREFIX = $(shell brew --prefix sdl2_image)
+CFLAGS      += -I$(SDL2_PREFIX)/include -I$(SDL2_PREFIX)/include/SDL2 -I$(SDL2T_PREFIX)/include -I$(SDL2I_PREFIX)/include
+LIBS         = -L$(SDL2_PREFIX)/lib -L$(SDL2T_PREFIX)/lib -L$(SDL2I_PREFIX)/lib -lSDL2 -lSDL2_ttf -lSDL2_image -lm
 
 all: $(BIN)/chess
 
@@ -28,8 +32,16 @@ test: $(TEST_SRCS)
 	$(CC) $(CFLAGS) -o $(BIN)/test $(TEST_SRCS) -I$(SRC)
 	$(BIN)/test
 
+STRATEGY_TEST_SRCS = $(SRC)/strategyTest.c $(SRC)/chess_types.c \
+                     $(SRC)/legalMoveGen.c $(SRC)/strategy.c $(SRC)/eval.c
+
+teststrategy: $(STRATEGY_TEST_SRCS)
+	mkdir -p $(BIN)
+	$(CC) $(CFLAGS) -o $(BIN)/strategyTest $(STRATEGY_TEST_SRCS) -I$(SRC) -lm
+	$(BIN)/strategyTest
+
 clean:
-	rm -f $(BIN)/chess $(BIN)/textChess $(BIN)/test
+	rm -f $(BIN)/chess $(BIN)/textChess $(BIN)/test $(BIN)/strategyTest
 
 tar: $(BIN)/chess
 	tar -czf Chess_Alpha_src.tar.gz \

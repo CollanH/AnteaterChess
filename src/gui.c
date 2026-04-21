@@ -654,6 +654,8 @@ int guiInit(void)
         "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
         "/usr/share/fonts/dejavu/DejaVuSans.ttf",
         "/usr/share/fonts/TTF/DejaVuSans.ttf",
+        "/Users/coran/Library/Fonts/DejaVuSans.ttf",
+        "/opt/homebrew/Caskroom/font-dejavu/2.37/dejavu-fonts-ttf-2.37/ttf/DejaVuSans.ttf",
         NULL
     };
 

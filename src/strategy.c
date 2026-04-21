@@ -15,13 +15,45 @@ bool inCheck(const GameState *gs, Color color);
 //internal function declarations
 static int negamax(GameState *gs, int depth, int alpha, int beta);
 
-//TODO: MVV-LVA move ordering
-//  score_move(gs, move) -> victim_value - attacker_value/10, captures score high, quiet moves score 0
-//  sort_moves(gs, moves) -> selection sort using score_move, search best captures first
-
 //TODO: quiescence search
 //  at depth 0, keep searching captures until position is quiet before scoring
 //  prevents horizon effect (AI walking into a recapture it cant see)
+
+//MVV-LVA: big victim captured by small attacker scores highest
+//uses eval.h PIECE_VALUE so ordering is consistent with the board evaluator
+static int score_move(const GameState *gs, Move m)
+{
+    PieceType victim   = gs->board[m.to.rank  ][m.to.file  ].piecetype;
+    PieceType attacker = gs->board[m.from.rank][m.from.file].piecetype;
+    if (victim != EMPTY)
+        return PIECE_VALUE[victim] * 10 - PIECE_VALUE[attacker];
+    return 0;
+}
+
+//insertion sort descending — captures first, quiet moves last
+static void sort_moves(const GameState *gs, MoveList *moves)
+{
+    int scores[250];
+    int i, j;
+    Move tmp;
+    int  ts;
+
+    for (i = 0; i < moves->count; i++)
+        scores[i] = score_move(gs, moves->moves[i]);
+
+    for (i = 1; i < moves->count; i++) {
+        tmp = moves->moves[i];
+        ts  = scores[i];
+        j   = i - 1;
+        while (j >= 0 && scores[j] < ts) {
+            moves->moves[j+1] = moves->moves[j];
+            scores[j+1]       = scores[j];
+            j--;
+        }
+        moves->moves[j+1] = tmp;
+        scores[j+1]       = ts;
+    }
+}
 
 //takes the current board and a move, returns what the board looks like after that move
 //never touches the original board - negamax needs it unchanged to keep searching
@@ -199,6 +231,9 @@ static int negamax(GameState *gs, int depth, int alpha, int beta)
         return 0;
     }
 
+    //search captures before quiet moves — alpha-beta prunes much more with good ordering
+    sort_moves(gs, &moves);
+
     best = -INF;
 
     for (i = 0; i < moves.count; i++)
@@ -266,7 +301,8 @@ Move* SelectBestMove(GameState *gs, Color color, int depth)
     start     = clock();
     best_move = moves.moves[0];
 
-    //TODO: call sort_moves here once implemented
+    //sort root moves once — captures searched first at every depth
+    sort_moves(gs, &moves);
 
     //iterative deepening up to the requested depth, stops early if time runs out
     for (current_depth = 2; current_depth <= depth; current_depth += 2)
