@@ -7,5 +7,6 @@ add_executable(chess
         src/legalMoveGenTest.c
         src/test.c
         src/textui.c
+        src/strategy.c
 )
 

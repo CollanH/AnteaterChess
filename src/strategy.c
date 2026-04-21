@@ -39,10 +39,6 @@ GameState apply_move(const GameState *gs, Move move)
     int rankIdx;
 
     //stack copy for search tree, no malloc - make_move in chess_types is heap based (for GUI)
-    nextState              = *gs;
-    nextState.prev_state   = NULL;
-    replace_piece(&nextState, *piece_at(gs, move.from), move.to);
-    replace_piece(&nextState, make_piece(EMPTY, YELLOW), move.from);
 
     from = move.from;
     to   = move.to;
@@ -204,11 +200,13 @@ static int negamax(GameState *gs, int depth, int alpha, int beta)
     for (i = 0; i < moves.count; i++)
     {
         //apply this move to get the resulting board
-        next = apply_move(gs, moves.moves[i]);
+        UndoData undo;
+        make_move_in_place(gs, moves.moves[i],&undo);
+
 
         //recurse but negate the score because its the opponents turn now
         //what is good for them is bad for us
-        score = -negamax(&next, depth - 1, -beta, -alpha);
+        score = -negamax(gs, depth - 1, -beta, -alpha);
 
         //keep track of the best score we found so far
         if (score > best)
@@ -285,7 +283,8 @@ Move* SelectBestMove(GameState *gs, Color color, int depth)
         for (i = 0; i < moves.count; i++)
         {
             //apply the move and score the resulting position
-            next = apply_move(gs, moves.moves[i]);
+            UndoData undo;
+            make_move_in_place(gs, moves.moves[i], &undo);
 
             //negated because negamax scores from the opponents perspective after our move
             score = -negamax(&next, current_depth - 1, -beta, -alpha);
