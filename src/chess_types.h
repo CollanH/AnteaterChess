@@ -54,8 +54,25 @@ typedef struct {
     int count;
 } MoveList;
 
+// piece list has an array of squares which contain the locations of all pieces for one side of the board
+typedef struct {
+    Square squares[40];
+    int count;
+} PieceList;
+
 typedef struct GameState {
     Piece board[8][10];
+    PieceList yellow_pieces;
+    PieceList blue_pieces;
+    Square yellow_king_square;
+    Square blue_king_square;
+    Square anteater_chain_square;
+	// if the yellow left rook is on A7 for example, if we look up piece_list_index[7][A] it
+	// will tell us where in yellow's PieceList the yellow left rook location is stored
+	// the location of the yellow left rook in the list can change as the list will
+	// compact when a piece is captured which is why this index is useful
+    int piece_list_index[8][10];
+    bool cache_valid;
     struct GameState* prev_state;
     bool yellow_qscastle;
 	bool yellow_kscastle;
@@ -74,6 +91,7 @@ typedef struct UndoData {
     Piece captured_piece;       // piece removed by this move, if any
 
     Square old_en_passant_square;
+    Square old_anteater_chain_square;
     Square captured_square;     // for en passant or normal captures
     Square rook_from;           // only used if castling
     Square rook_to;             // only used if castling
@@ -96,6 +114,8 @@ enum {
 // FOR GUI TO CALL
 GameState* undo(GameState* gs);
 GameState* make_move(const GameState* gs, Move move);
+GameState* promote_pawn(const GameState* gs, Square pawn, PieceType pt);
+GameState* make_move_ai(const GameState* gs, Move move);
 
 void undo_move_in_place(GameState *gs, Move move, const UndoData *undo);
 void make_move_in_place(GameState *gs, Move move, UndoData *undo);
@@ -109,9 +129,10 @@ Move* moveList_at(MoveList* moveList, int index);
 void delete_move(MoveList* moveList, int index);
 // appends a move at the end of a moveList
 void append_move(MoveList* moveList, Move move);
-const Piece* piece_at(const GameState* gs, Square square);
+Piece* piece_at(GameState* gs, Square square);
 Piece make_piece(PieceType pt, Color color);
 void replace_piece(GameState* gs, Piece piece, Square square);
 GameState initalize_empty_GameState();
 bool square_equals(Square a, Square b);
+void refresh_piece_cache(GameState *gs);
 #endif /* CHESS_TYPES_H */

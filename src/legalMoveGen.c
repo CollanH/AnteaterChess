@@ -37,18 +37,14 @@ void clean_moveList(GameState *gs,MoveList* moveList) {
 			count++;
 		}
 		else {
-			// make a move to check if it causes
-			Piece occupant = *piece_at(gs, move->to);
-			Piece mover = *piece_at(gs, move->from);
-
-			gs->board[move->to.rank][move->to.file] = mover;
-			gs->board[move->from.rank][move->from.file] = make_piece(EMPTY, YELLOW);
-			if(inCheck(gs, gs->turn)) {
+			UndoData undo;
+			Color mover = gs->turn;
+			make_move_in_place(gs, *move, &undo);
+			if(inCheck(gs, mover)) {
 				to_delete[count] = i;
 				count++;
 			}
-			gs->board[move->to.rank][move->to.file] = occupant;
-			gs->board[move->from.rank][move->from.file] = mover;
+			undo_move_in_place(gs, *move, &undo);
 		}
 
 
@@ -63,6 +59,11 @@ void clean_moveList(GameState *gs,MoveList* moveList) {
 // returns movelist of moves based on a square
 MoveList findPossibleMoves(GameState *gs, Square square) {
 	MoveList moveList = initialize_moveList();
+
+	if (gs->anteater_ate && !square_equals(square, gs->anteater_chain_square)) {
+		return moveList;
+	}
+
 	squareToMoves(gs, square, &moveList);
 	clean_moveList(gs, &moveList);
 
@@ -70,13 +71,31 @@ MoveList findPossibleMoves(GameState *gs, Square square) {
 }
 MoveList legalMoveGen(GameState *gs) {
 	MoveList moveList = initialize_moveList();
+	PieceList *pieces;
+	Color turn;
 
-	Color turn = gs->turn;
-	for(int i = 0; i < 8; i++){
-		for(int j = 0; j < 10; j++){
-			if((gs->board[i][j].piecetype) != EMPTY && gs->board[i][j].color == turn)
-				squareToMoves(gs, make_square(i, (File)j), &moveList);
+	if (!gs->cache_valid) {
+		refresh_piece_cache(gs);
+	}
+
+	turn = gs->turn;
+	pieces = (turn == YELLOW) ? &gs->yellow_pieces : &gs->blue_pieces;
+
+	if (gs->anteater_ate) {
+		if (gs->anteater_chain_square.rank >= 0 &&
+			gs->anteater_chain_square.rank < 8 &&
+			gs->anteater_chain_square.file >= A &&
+			gs->anteater_chain_square.file <= J &&
+			gs->board[gs->anteater_chain_square.rank][gs->anteater_chain_square.file].piecetype == ANTEATER &&
+			gs->board[gs->anteater_chain_square.rank][gs->anteater_chain_square.file].color == turn) {
+			squareToMoves(gs, gs->anteater_chain_square, &moveList);
 		}
+		clean_moveList(gs, &moveList);
+		return moveList;
+	}
+
+	for(int i = 0; i < pieces->count; i++){
+		squareToMoves(gs, pieces->squares[i], &moveList);
 	}
 
 	clean_moveList(gs, &moveList);
@@ -128,14 +147,13 @@ void squareToMoves(const GameState *gs, Square square, MoveList* moveList) {
 // true if king of color is in check
 // false otherwise
 Square find_king_square(const GameState* gs, Color color) {
-	for(int i = 0; i < 8; i++){
-		for(int j = 0; j < 10; j++){
-			if((gs->board[i][j].piecetype) == KING && gs->board[i][j].color == color)
-				return make_square(i, (File)j);
-		}
+	GameState *mutable_gs = (GameState *)gs;
+
+	if (!mutable_gs->cache_valid) {
+		refresh_piece_cache(mutable_gs);
 	}
 
-	return make_square(-1,-1);
+	return (color == YELLOW) ? mutable_gs->yellow_king_square : mutable_gs->blue_king_square;
 
 }
 
@@ -370,6 +388,11 @@ bool king_check(const GameState* gs, Color color){
 
 
 bool inCheck(const GameState* gs, Color color){
+	GameState *mutable_gs = (GameState *)gs;
+	if (!mutable_gs->cache_valid) {
+		refresh_piece_cache(mutable_gs);
+	}
+
 	bool check = queen_bishop_rook_check(gs, color)
 			|| pawn_check(gs, color)
 			|| knight_check(gs, color)
@@ -382,11 +405,10 @@ bool inCheck(const GameState* gs, Color color){
 }
 bool move_in_check(const GameState *gs, const Move* move) {
 	GameState game = *gs;
-	Piece mover = *piece_at(&game, move->from);
+	UndoData undo;
 
-	game.board[move->to.rank][move->to.file] = mover;
-	game.board[move->from.rank][move->from.file] = make_piece(EMPTY, YELLOW);
-	if(inCheck(&game, mover.color)) {
+	make_move_in_place(&game, *move, &undo);
+	if(inCheck(&game, gs->turn)) {
 		return true;
 	}
 

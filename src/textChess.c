@@ -295,8 +295,10 @@ void init_board(GameState *gs)
     gs->blue_kscastle      = true;
     gs->blue_qscastle      = true;
     gs->anteater_ate       = false;
+    gs->anteater_chain_square = make_square(-1, A);
     gs->en_passant_square  = make_square(-1, A);
     gs->prev_state         = NULL;
+    refresh_piece_cache(gs);
 }
 
 //checks if a move is in the legal moves list

@@ -156,7 +156,7 @@ int main()
                 hasPrev = 1;
                 aiMove(move);
                 logMove(logfile, gs.turn, move);
-                gs = *make_move(&gs, move);
+                gs = *make_move_ai(&gs, move);
                 break;
 
             //user vs user, or human side in user vs AI
@@ -270,8 +270,10 @@ void init_board(GameState *gs)
     gs->blue_kscastle      = true;
     gs->blue_qscastle      = true;
     gs->anteater_ate       = false;
+    gs->anteater_chain_square = make_square(-1, A);
     gs->en_passant_square  = make_square(-1, A);
     gs->prev_state         = NULL;
+    refresh_piece_cache(gs);
 }
 
 //validates typed input against the move list, only used in textChess

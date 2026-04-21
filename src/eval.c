@@ -312,20 +312,17 @@ int getPSTBonus(PieceType type, int f, int lookupRank){
 }
 
 int KingDangerScore(GameState* gs, Color side){
-        //find king square (kf, kr) for side
-        //if king not found: return 0
-        int kf = -1;
-        int kr = -1;
+        Square king_square;
+        int kf;
+        int kr;
 
-        for(int r = 0; r < 8; r++){
-            for(int f = 0; f < 10; f++){
-                if(gs->board[r][f].piecetype == KING && gs->board[r][f].color == side){
-                    kr = r;
-                    kf = f;
-                }
-
-            }
+        if (!gs->cache_valid) {
+            refresh_piece_cache(gs);
         }
+
+        king_square = (side == YELLOW) ? gs->yellow_king_square : gs->blue_king_square;
+        kr = king_square.rank;
+        kf = king_square.file;
         if(kf == -1) return 0;
 
         int danger = 0;
@@ -359,19 +356,17 @@ int KingDangerScore(GameState* gs, Color side){
 
 
 int shieldPenalty(GameState *gs, Color side){
-    int kf = -1;
-    int kr = -1;
+    Square king_square;
+    int kf;
+    int kr;
 
-    /* find the king */
-    for(int r = 0; r < 8; r++){
-        for(int f = 0; f < 10; f++){
-            if(gs->board[r][f].piecetype == KING &&
-               gs->board[r][f].color     == side){
-                kf = f;
-                kr = r;
-            }
-        }
+    if (!gs->cache_valid) {
+        refresh_piece_cache(gs);
     }
+
+    king_square = (side == YELLOW) ? gs->yellow_king_square : gs->blue_king_square;
+    kf = king_square.file;
+    kr = king_square.rank;
     if(kf == -1) return 0;
 
     int penalty = 0;

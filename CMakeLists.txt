@@ -4,6 +4,11 @@ project(chess C)
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(SDL2 REQUIRED sdl2)
+pkg_check_modules(SDL2_TTF REQUIRED SDL2_ttf)
+pkg_check_modules(SDL2_IMAGE REQUIRED SDL2_image)
+
 add_executable(chess
         src/chess.c
         src/strategy.c
@@ -13,11 +18,24 @@ add_executable(chess
         src/gui.c
 )
 
-target_include_directories(chess PRIVATE src)
+target_include_directories(chess PRIVATE
+        src
+        ${SDL2_INCLUDE_DIRS}
+        ${SDL2_TTF_INCLUDE_DIRS}
+        ${SDL2_IMAGE_INCLUDE_DIRS}
+)
 
-target_compile_options(chess PRIVATE -Wall -g)
+target_compile_options(chess PRIVATE -Wall -g -O2)
 
-find_package(SDL2 REQUIRED)
-find_package(SDL2_ttf REQUIRED)
+target_link_directories(chess PRIVATE
+        ${SDL2_LIBRARY_DIRS}
+        ${SDL2_TTF_LIBRARY_DIRS}
+        ${SDL2_IMAGE_LIBRARY_DIRS}
+)
 
-target_link_libraries(chess PRIVATE SDL2::SDL2 SDL2_ttf::SDL2_ttf m)
+target_link_libraries(chess PRIVATE
+        ${SDL2_LIBRARIES}
+        ${SDL2_TTF_LIBRARIES}
+        ${SDL2_IMAGE_LIBRARIES}
+        m
+)
