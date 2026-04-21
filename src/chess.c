@@ -156,7 +156,7 @@ int main()
                 hasPrev = 1;
                 aiMove(move);
                 logMove(logfile, gs.turn, move);
-                gs = apply_move(&gs, move);
+                gs = *make_move(&gs, move);
                 break;
 
             //user vs user, or human side in user vs AI
@@ -176,7 +176,7 @@ int main()
                     hasPrev = 1;
                     aiMove(move);
                     logMove(logfile, gs.turn, move);
-                    gs = apply_move(&gs, move);
+                    gs = *make_move(&gs, move);
                 }
                 else
                 {
@@ -188,7 +188,7 @@ int main()
                     prevGs  = gs;
                     hasPrev = 1;
                     logMove(logfile, gs.turn, move);
-                    gs = apply_move(&gs, move);
+                    gs = *make_move(&gs, move);
                 }
                 break;
 

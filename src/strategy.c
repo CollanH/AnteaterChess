@@ -1,4 +1,7 @@
 #include "strategy.h"
+
+#include <stdio.h>
+
 #include "eval.h"
 #include <stdlib.h>
 #include <time.h>
@@ -14,7 +17,94 @@ bool inCheck(const GameState *gs, Color color);
 
 //internal function declarations
 static int negamax(GameState *gs, int depth, int alpha, int beta);
+static int piece_value(PieceType piece);
+static int score_move(const GameState *gs, Move move);
+static clock_t search_start_time;
+static bool search_aborted;
+static bool time_up(void)
+{
+    double elapsed = (double)(clock() - search_start_time) / CLOCKS_PER_SEC;
+    return elapsed >= TIME_LIMIT_SECS;
+}
+static int piece_value(PieceType piece)
+{
+    switch (piece)
+    {
+        case KING:     return 10000;
+        case QUEEN:    return 900;
+        case ROOK:     return 500;
+        case BISHOP:   return 330;
+        case KNIGHT:   return 320;
+        case ANT:      return 100;
+        case ANTEATER: return 200;   // adjust if you want
+        case EMPTY:    return 0;
+        default:       return 0;
+    }
+}
 
+static int score_move(const GameState *gs, Move move)
+{
+    Piece attacker;
+    Piece victim;
+    int attacker_value;
+    int victim_value;
+
+    attacker = gs->board[move.from.rank][move.from.file];
+    victim   = gs->board[move.to.rank][move.to.file];
+
+    attacker_value = piece_value(attacker.piecetype);
+    victim_value   = piece_value(victim.piecetype);
+
+    // normal capture
+    if (victim.piecetype != EMPTY)
+    {
+        return 10000 + victim_value - attacker_value / 10;
+    }
+
+    // en passant capture:
+    // ant moves diagonally to empty square, so destination is empty
+    if (attacker.piecetype == ANT && move.from.file != move.to.file)
+    {
+        return 10000 + piece_value(ANT) - attacker_value / 10;
+    }
+
+    // quiet move
+    return 0;
+}
+
+static void sort_moves(const GameState *gs, MoveList *moves)
+{
+    int i;
+    int j;
+    int best_index;
+    int best_score;
+    int current_score;
+    Move temp;
+
+    for (i = 0; i < moves->count - 1; i++)
+    {
+        best_index = i;
+        best_score = score_move(gs, moves->moves[i]);
+
+        for (j = i + 1; j < moves->count; j++)
+        {
+            current_score = score_move(gs, moves->moves[j]);
+
+            if (current_score > best_score)
+            {
+                best_score = current_score;
+                best_index = j;
+            }
+        }
+
+        if (best_index != i)
+        {
+            temp = moves->moves[i];
+            moves->moves[i] = moves->moves[best_index];
+            moves->moves[best_index] = temp;
+        }
+    }
+}
 //TODO: MVV-LVA move ordering
 //  score_move(gs, move) -> victim_value - attacker_value/10, captures score high, quiet moves score 0
 //  sort_moves(gs, moves) -> selection sort using score_move, search best captures first
@@ -25,173 +115,41 @@ static int negamax(GameState *gs, int depth, int alpha, int beta);
 
 //takes the current board and a move, returns what the board looks like after that move
 //never touches the original board - negamax needs it unchanged to keep searching
-GameState apply_move(const GameState *gs, Move move)
-{
-    GameState nextState;
-    Square from;
-    Square to;
-    PieceType movedPiece;
-    Color currentTurn;
-    int rankDistance;
-    int fileDistance;
-    int direction;
-    int fileIdx;
-    int rankIdx;
-
-    //stack copy for search tree, no malloc - make_move in chess_types is heap based (for GUI)
-
-    from = move.from;
-    to   = move.to;
-
-    //figure out what piece moved and whose turn it was
-    movedPiece  = gs->board[from.rank][from.file].piecetype;
-    currentTurn = gs->turn;
-
-    //anteater special rule, if it moved more than one square along a rank or file
-    //all the ants it ran through in between get eaten too
-    if (movedPiece == ANTEATER)
-    {
-        rankDistance = to.rank - from.rank;
-        fileDistance = to.file - from.file;
-
-        //moved horizontally more than one square, eat ants along the rank
-        if (rankDistance == 0 && (fileDistance > 1 || fileDistance < -1))
-        {
-            if (fileDistance > 0)
-            {
-                direction = 1;
-            }
-            else
-            {
-                direction = -1;
-            }
-
-            for (fileIdx = from.file + direction; fileIdx != to.file; fileIdx += direction)
-            {
-                nextState.board[from.rank][fileIdx] = (Piece){EMPTY, YELLOW};
-            }
-        }
-
-        //moved vertically more than one square, eat ants along the file
-        if (fileDistance == 0 && (rankDistance > 1 || rankDistance < -1))
-        {
-            if (rankDistance > 0)
-            {
-                direction = 1;
-            }
-            else
-            {
-                direction = -1;
-            }
-
-            for (rankIdx = from.rank + direction; rankIdx != to.rank; rankIdx += direction)
-            {
-                nextState.board[rankIdx][from.file] = (Piece){EMPTY, YELLOW};
-            }
-        }
-
-        nextState.anteater_ate = true;
-    }
-    else
-    {
-        nextState.anteater_ate = false;
-    }
-
-    //en passant, ant moved diagonally to an empty square
-    //the captured ant isnt at the destination, its sitting beside the attacker
-    //so we have to manually remove it
-    if (movedPiece == ANT)
-    {
-        fileDistance = to.file - from.file;
-
-        //moved diagonally to empty square = en passant, remove the ant that got bypassed
-        if (fileDistance != 0 && gs->board[to.rank][to.file].piecetype == EMPTY)
-        {
-            nextState.board[from.rank][to.file] = (Piece){EMPTY, YELLOW};
-        }
-    }
-
-    //reset en passant square every turn, its only valid for one turn
-    nextState.en_passant_square.rank = -1;
-    nextState.en_passant_square.file = A;
-
-    //if an ant just double pushed, set the square it skipped over
-    //so legalMoveGen knows en passant is available next turn
-    if (movedPiece == ANT)
-    {
-        rankDistance = to.rank - from.rank;
-
-        if (rankDistance == -2 || rankDistance == 2)
-        {
-            nextState.en_passant_square.rank = (from.rank + to.rank) / 2;
-            nextState.en_passant_square.file = from.file;
-        }
-    }
-
-    //ant reached the back rank, promote it to queen
-    if (movedPiece == ANT && (to.rank == 0 || to.rank == 7))
-    {
-        nextState.board[to.rank][to.file].piecetype = QUEEN;
-    }
-
-    //king moved, revoke both castling rights for that side
-    if (movedPiece == KING)
-    {
-        if (currentTurn == YELLOW)
-        {
-            nextState.yellow_kscastle = false;
-            nextState.yellow_qscastle = false;
-        }
-        else
-        {
-            nextState.blue_kscastle = false;
-            nextState.blue_qscastle = false;
-        }
-    }
-
-    //move is done, flip whose turn it is
-    if (currentTurn == YELLOW)
-    {
-        nextState.turn = BLUE;
-    }
-    else
-    {
-        nextState.turn = YELLOW;
-    }
-
-    return nextState;
-}
 
 //the actual AI search, tries every move and picks the best one
 //score is always from the perspective of whoever is moving right now
 //positive = winning, negative = losing
 static int negamax(GameState *gs, int depth, int alpha, int beta)
 {
+    if (search_aborted)
+    {
+        return 0;
+    }
+
+    if (time_up())
+    {
+        search_aborted = true;
+        return 0;
+    }
     MoveList moves;
     int best;
     int i;
-    GameState next;
     int score;
 
-    //hit the depth limit, score the board as is
     if (depth == 0)
     {
         return evaluate(gs);
     }
 
-    //get all legal moves for whoever's turn it is
     moves = legalMoveGen(gs);
+    sort_moves(gs, &moves);
 
-    //no moves means its either checkmate or stalemate
     if (moves.count == 0)
     {
-        //in check with no moves = checkmate, worst possible outcome
         if (inCheck(gs, gs->turn))
         {
             return -INF;
         }
-
-        //not in check with no moves = stalemate, its a draw
         return 0;
     }
 
@@ -199,29 +157,23 @@ static int negamax(GameState *gs, int depth, int alpha, int beta)
 
     for (i = 0; i < moves.count; i++)
     {
-        //apply this move to get the resulting board
         UndoData undo;
-        make_move_in_place(gs, moves.moves[i],&undo);
+        make_move_in_place(gs, moves.moves[i], &undo);
 
-
-        //recurse but negate the score because its the opponents turn now
-        //what is good for them is bad for us
         score = -negamax(gs, depth - 1, -beta, -alpha);
 
-        //keep track of the best score we found so far
+        undo_move_in_place(gs, moves.moves[i], &undo);
+
         if (score > best)
         {
             best = score;
         }
 
-        //alpha is the best we are guaranteed to get from here
         if (score > alpha)
         {
             alpha = score;
         }
 
-        //alpha >= beta means the opponent already has a better option elsewhere
-        //they would never let us reach this position so stop searching it
         if (alpha >= beta)
         {
             break;
@@ -231,11 +183,12 @@ static int negamax(GameState *gs, int depth, int alpha, int beta)
     return best;
 }
 
-//entry point, finds and returns the best move for the AI to play
-//uses iterative deepening, searches depth 2, 4, 6, 8... until 50 seconds
-//always has a valid move saved from the last completed depth
+
 Move* SelectBestMove(GameState *gs, Color color, int depth)
 {
+    search_start_time = clock();
+    search_aborted = false;
+
     MoveList moves;
     static Move best_move;
     Move best_at_depth;
@@ -245,55 +198,54 @@ Move* SelectBestMove(GameState *gs, Color color, int depth)
     int beta;
     int i;
     int current_depth;
-    GameState next;
     int score;
     clock_t start;
     double elapsed;
 
     (void)color;
 
-    //get all legal moves for the current position
     moves = legalMoveGen(gs);
+    sort_moves(gs, &moves);
 
-    //no moves means checkmate or stalemate - nothing to return
     if (moves.count == 0)
     {
         return NULL;
     }
 
-    start     = clock();
+    start = search_start_time;
     best_move = moves.moves[0];
 
-    //TODO: call sort_moves here once implemented
-
-    //iterative deepening up to the requested depth, stops early if time runs out
     for (current_depth = 2; current_depth <= depth; current_depth += 2)
     {
-        //check time before starting a new depth
         elapsed = (double)(clock() - start) / CLOCKS_PER_SEC;
         if (elapsed >= TIME_LIMIT_SECS)
         {
             break;
         }
-
         best_score_at_depth = -INF;
         alpha               = -INF;
-        beta                =  INF;
+        beta                = INF;
 
         for (i = 0; i < moves.count; i++)
         {
-            //apply the move and score the resulting position
             UndoData undo;
             make_move_in_place(gs, moves.moves[i], &undo);
 
-            //negated because negamax scores from the opponents perspective after our move
-            score = -negamax(&next, current_depth - 1, -beta, -alpha);
+            score = -negamax(gs, current_depth - 1, -beta, -alpha);
 
-            //if this move scored higher than anything at this depth, save it
+            undo_move_in_place(gs, moves.moves[i], &undo);
+
             if (score > best_score_at_depth)
             {
-                best_score_at_depth = score;
-                best_at_depth       = moves.moves[i];
+                if (!search_aborted)
+                {
+                    best_score = best_score_at_depth;
+                    best_move  = best_at_depth;
+                }
+                else
+                {
+                    break;
+                }
 
                 if (score > alpha)
                 {
@@ -302,12 +254,14 @@ Move* SelectBestMove(GameState *gs, Color color, int depth)
             }
         }
 
-        //completed this depth fully, save as our best result
         best_score = best_score_at_depth;
         best_move  = best_at_depth;
 
         (void)best_score;
     }
+    printf("finished depth %d, best score = %d\n", current_depth, best_score_at_depth);
+    printf("depth %d root move %d done, aborted=%d, score=%d\n",
+       current_depth, i, search_aborted, score);
 
     return &best_move;
 }
