@@ -163,6 +163,213 @@ GameState* make_move(const GameState* gs, Move move) {
 
 	return new_gs;
 }
+static inline bool in_bounds_sq(Square s)
+{
+	return s.rank >= 0 && s.rank < 8 && s.file >= A && s.file <= J;
+}
+
+static inline bool is_empty_piece(Piece p)
+{
+	return p.piecetype == EMPTY;
+}
+
+void undo_move_in_place(GameState *gs, Move move, const UndoData *undo)
+{
+    Square from = move.from;
+    Square to   = move.to;
+    int rankDistance = to.rank - from.rank;
+    int fileDistance = to.file - from.file;
+    int direction;
+    int i;
+
+    // restore simple state first
+    gs->yellow_qscastle = (undo->flags & UNDO_YELLOW_QSCASTLE) != 0;
+    gs->yellow_kscastle = (undo->flags & UNDO_YELLOW_KSCASTLE) != 0;
+    gs->blue_qscastle   = (undo->flags & UNDO_BLUE_QSCASTLE) != 0;
+    gs->blue_kscastle   = (undo->flags & UNDO_BLUE_KSCASTLE) != 0;
+    gs->anteater_ate    = (undo->flags & UNDO_ANTEATER_ATE) != 0;
+    gs->turn            = (undo->flags & UNDO_TURN_BLUE) ? BLUE : YELLOW;
+    gs->en_passant_square = undo->old_en_passant_square;
+
+    // undo castling rook move first so squares are free
+    if (undo->flags & UNDO_WAS_CASTLE) {
+        gs->board[undo->rook_from.rank][undo->rook_from.file] =
+            gs->board[undo->rook_to.rank][undo->rook_to.file];
+        gs->board[undo->rook_to.rank][undo->rook_to.file] =
+            make_piece(EMPTY, YELLOW);
+    }
+
+    // move main piece back
+    gs->board[from.rank][from.file] = undo->moved_piece;
+    gs->board[to.rank][to.file]     = make_piece(EMPTY, YELLOW);
+
+    // restore captured piece
+    if (in_bounds_sq(undo->captured_square) && !is_empty_piece(undo->captured_piece)) {
+        gs->board[undo->captured_square.rank][undo->captured_square.file] = undo->captured_piece;
+    }
+
+    // undo anteater eaten path
+    if (undo->moved_piece.piecetype == ANTEATER) {
+        if (rankDistance == 0 && (fileDistance > 1 || fileDistance < -1)) {
+            direction = (fileDistance > 0) ? 1 : -1;
+            for (i = from.file + direction; i != to.file; i += direction) {
+                gs->board[from.rank][i] = make_piece(ANT, BLUE);
+            }
+        }
+
+        if (fileDistance == 0 && (rankDistance > 1 || rankDistance < -1)) {
+            direction = (rankDistance > 0) ? 1 : -1;
+            for (i = from.rank + direction; i != to.rank; i += direction) {
+                gs->board[i][from.file] = make_piece(ANT, BLUE);
+            }
+        }
+    }
+
+
+}
+
+void make_move_in_place(GameState *gs, Move move, UndoData *undo)
+{
+    Square from = move.from;
+    Square to   = move.to;
+    Piece moved = gs->board[from.rank][from.file];
+    Piece dest  = gs->board[to.rank][to.file];
+
+    int rankDistance;
+    int fileDistance;
+    int direction;
+    int i;
+
+    undo->moved_piece           = moved;
+    undo->captured_piece        = make_piece(EMPTY, YELLOW);
+    undo->old_en_passant_square = gs->en_passant_square;
+    undo->captured_square       = make_square(-1, A);
+    undo->rook_from             = make_square(-1, A);
+    undo->rook_to               = make_square(-1, A);
+    undo->flags                 = 0;
+
+    if (gs->yellow_qscastle) undo->flags |= UNDO_YELLOW_QSCASTLE;
+    if (gs->yellow_kscastle) undo->flags |= UNDO_YELLOW_KSCASTLE;
+    if (gs->blue_qscastle)   undo->flags |= UNDO_BLUE_QSCASTLE;
+    if (gs->blue_kscastle)   undo->flags |= UNDO_BLUE_KSCASTLE;
+    if (gs->anteater_ate)    undo->flags |= UNDO_ANTEATER_ATE;
+    if (gs->turn == BLUE)    undo->flags |= UNDO_TURN_BLUE;
+
+    rankDistance = to.rank - from.rank;
+    fileDistance = to.file - from.file;
+
+    // default: move piece from -> to
+    gs->board[to.rank][to.file]     = moved;
+    gs->board[from.rank][from.file] = make_piece(EMPTY, YELLOW);
+
+    // normal capture on destination
+    if (!is_empty_piece(dest)) {
+        undo->captured_piece  = dest;
+        undo->captured_square = to;
+    }
+
+    // anteater special rule: eats ants along rank/file if moved >1 in straight line
+    if (moved.piecetype == ANTEATER) {
+        if (rankDistance == 0 && (fileDistance > 1 || fileDistance < -1)) {
+            direction = (fileDistance > 0) ? 1 : -1;
+            for (i = from.file + direction; i != to.file; i += direction) {
+                // save only if piece exists; if multiple pieces can be eaten here,
+                // this undo format assumes they are always ants and can be restored
+                // by scanning again in undo.
+                gs->board[from.rank][i] = make_piece(EMPTY, YELLOW);
+            }
+        }
+
+        if (fileDistance == 0 && (rankDistance > 1 || rankDistance < -1)) {
+            direction = (rankDistance > 0) ? 1 : -1;
+            for (i = from.rank + direction; i != to.rank; i += direction) {
+                gs->board[i][from.file] = make_piece(EMPTY, YELLOW);
+            }
+        }
+
+        gs->anteater_ate = true;
+    } else {
+        gs->anteater_ate = false;
+    }
+
+    // en passant: ant moves diagonally to empty square
+    if (moved.piecetype == ANT) {
+        if (fileDistance != 0 && is_empty_piece(dest)) {
+            Square epCaptured = make_square(from.rank, to.file);
+
+            undo->captured_piece  = gs->board[epCaptured.rank][epCaptured.file];
+            undo->captured_square = epCaptured;
+
+            gs->board[epCaptured.rank][epCaptured.file] = make_piece(EMPTY, YELLOW);
+        }
+    }
+
+    // reset en passant square every move
+    gs->en_passant_square = make_square(-1, A);
+
+    // ant double push creates en passant square
+    if (moved.piecetype == ANT && (rankDistance == 2 || rankDistance == -2)) {
+        gs->en_passant_square = make_square((from.rank + to.rank) / 2, from.file);
+    }
+
+    // promotion
+    if (moved.piecetype == ANT && (to.rank == 0 || to.rank == 7)) {
+        gs->board[to.rank][to.file].piecetype = QUEEN;
+        undo->flags |= UNDO_WAS_PROMOTION;
+    }
+
+    // king moved: revoke both castling rights
+    if (moved.piecetype == KING) {
+        if (moved.color == YELLOW) {
+            gs->yellow_kscastle = false;
+            gs->yellow_qscastle = false;
+        } else {
+            gs->blue_kscastle = false;
+            gs->blue_qscastle = false;
+        }
+
+
+        if (from.rank == to.rank && (fileDistance == 2 || fileDistance == -2)) {
+            undo->flags |= UNDO_WAS_CASTLE;
+
+            if (fileDistance == 2) {
+                // kingside
+                undo->rook_from = make_square(from.rank, J);
+                undo->rook_to   = make_square(from.rank, from.file + 1);
+            } else {
+                // queenside
+                undo->rook_from = make_square(from.rank, A);
+                undo->rook_to   = make_square(from.rank, from.file - 1);
+            }
+
+            gs->board[undo->rook_to.rank][undo->rook_to.file] =
+                gs->board[undo->rook_from.rank][undo->rook_from.file];
+            gs->board[undo->rook_from.rank][undo->rook_from.file] =
+                make_piece(EMPTY, YELLOW);
+        }
+    }
+
+    // rook moved: revoke that rook's castling right
+    if (moved.piecetype == ROOK) {
+        if (square_equals(from, make_square(7, A))) gs->yellow_qscastle = false;
+        if (square_equals(from, make_square(7, J))) gs->yellow_kscastle = false;
+        if (square_equals(from, make_square(0, A))) gs->blue_qscastle   = false;
+        if (square_equals(from, make_square(0, J))) gs->blue_kscastle   = false;
+    }
+
+    // rook captured on home square: revoke that side's castling right too
+    if (!is_empty_piece(undo->captured_piece) && undo->captured_piece.piecetype == ROOK) {
+        if (square_equals(undo->captured_square, make_square(7, A))) gs->yellow_qscastle = false;
+        if (square_equals(undo->captured_square, make_square(7, J))) gs->yellow_kscastle = false;
+        if (square_equals(undo->captured_square, make_square(0, A))) gs->blue_qscastle   = false;
+        if (square_equals(undo->captured_square, make_square(0, J))) gs->blue_kscastle   = false;
+    }
+
+    // flip turn
+    gs->turn = (gs->turn == YELLOW) ? BLUE : YELLOW;
+}
+
+
 
 GameState initalize_empty_GameState() {
 	GameState gs;

@@ -2,6 +2,7 @@
 #define CHESS_TYPES_H
 
 #include <stdbool.h>
+#include <stdint.h>
 
 typedef enum {
     A,
@@ -67,11 +68,37 @@ typedef struct GameState {
 } GameState;
 
 
+
+typedef struct UndoData {
+    Piece moved_piece;          // piece as it was before move
+    Piece captured_piece;       // piece removed by this move, if any
+
+    Square old_en_passant_square;
+    Square captured_square;     // for en passant or normal captures
+    Square rook_from;           // only used if castling
+    Square rook_to;             // only used if castling
+
+    uint8_t flags;              // packed booleans
+} UndoData;
+
+enum {
+    UNDO_YELLOW_QSCASTLE = 1 << 0,
+    UNDO_YELLOW_KSCASTLE = 1 << 1,
+    UNDO_BLUE_QSCASTLE   = 1 << 2,
+    UNDO_BLUE_KSCASTLE   = 1 << 3,
+    UNDO_ANTEATER_ATE    = 1 << 4,
+    UNDO_TURN_BLUE       = 1 << 5,
+    UNDO_WAS_PROMOTION   = 1 << 6,
+    UNDO_WAS_CASTLE      = 1 << 7
+};
+
+
 // FOR GUI TO CALL
 GameState* undo(GameState* gs);
 GameState* make_move(const GameState* gs, Move move);
 
-
+void undo_move_in_place(GameState *gs, Move move, const UndoData *undo);
+void make_move_in_place(GameState *gs, Move move, UndoData *undo);
 
 Square make_square(int rank, File file);
 // initializes an empty move list
