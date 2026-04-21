@@ -96,7 +96,7 @@ typedef struct UndoData {
     Square rook_from;           // only used if castling
     Square rook_to;             // only used if castling
 
-    uint8_t flags;              // packed booleans
+    uint16_t flags;             // packed booleans
 } UndoData;
 
 enum {
@@ -107,7 +107,8 @@ enum {
     UNDO_ANTEATER_ATE    = 1 << 4,
     UNDO_TURN_BLUE       = 1 << 5,
     UNDO_WAS_PROMOTION   = 1 << 6,
-    UNDO_WAS_CASTLE      = 1 << 7
+    UNDO_WAS_CASTLE      = 1 << 7,
+    UNDO_WAS_NOOP        = 1 << 8
 };
 
 
@@ -135,4 +136,5 @@ void replace_piece(GameState* gs, Piece piece, Square square);
 GameState initalize_empty_GameState();
 bool square_equals(Square a, Square b);
 void refresh_piece_cache(GameState *gs);
+bool is_promotion_move(const GameState *gs, Move move);
 #endif /* CHESS_TYPES_H */

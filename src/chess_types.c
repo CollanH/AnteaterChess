@@ -169,6 +169,19 @@ void refresh_piece_cache(GameState *gs)
 	gs->cache_valid = true;
 }
 
+bool is_promotion_move(const GameState *gs, Move move)
+{
+	Piece moved_piece;
+
+	if (gs == NULL || !in_bounds_sq(move.from) || !in_bounds_sq(move.to)) {
+		return false;
+	}
+
+	moved_piece = gs->board[move.from.rank][move.from.file];
+	return moved_piece.piecetype == ANT &&
+		(move.to.rank == 0 || move.to.rank == 7);
+}
+
 Square make_square(int rank, File file){
 	Square sq;
 	sq.file = file;
@@ -290,6 +303,10 @@ void undo_move_in_place(GameState *gs, Move move, const UndoData *undo)
     Square from = move.from;
     Square to   = move.to;
 
+    if (undo->flags & UNDO_WAS_NOOP) {
+        return;
+    }
+
     if (!gs->cache_valid) {
         refresh_piece_cache(gs);
     }
@@ -367,6 +384,13 @@ void make_move_in_place(GameState *gs, Move move, UndoData *undo)
         dest.piecetype == ANT &&
         dest.color != moved.color;
     keep_turn = false;
+
+    if (moved.piecetype == ANTEATER &&
+        !is_empty_piece(dest) &&
+        (dest.piecetype != ANT || dest.color == moved.color)) {
+        undo->flags |= UNDO_WAS_NOOP;
+        return;
+    }
 
     // normal capture on destination
     if (!is_empty_piece(dest) &&

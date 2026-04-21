@@ -11,6 +11,62 @@ void logMove(FILE *logfile, Color color, Move move);
 void init_board(GameState *gs);
 bool is_legal(MoveList *moves, Move move);
 bool inCheck(const GameState *gs, Color color);
+static PieceType prompt_promotion_choice(void);
+static void apply_human_promotion_if_needed(GameState *gs, const GameState *before, Move move);
+
+static PieceType prompt_promotion_choice(void)
+{
+    char input[16];
+
+    for (;;)
+    {
+        printf("Promote ant to (q)ueen, (r)ook, (b)ishop, k(n)ight, or (t) anteater: ");
+        if (!fgets(input, sizeof(input), stdin))
+        {
+            return QUEEN;
+        }
+
+        switch (input[0])
+        {
+            case 'q':
+            case 'Q':
+                return QUEEN;
+            case 'r':
+            case 'R':
+                return ROOK;
+            case 'b':
+            case 'B':
+                return BISHOP;
+            case 'n':
+            case 'N':
+                return KNIGHT;
+            case 't':
+            case 'T':
+                return ANTEATER;
+            default:
+                printError("Invalid promotion choice.");
+                break;
+        }
+    }
+}
+
+static void apply_human_promotion_if_needed(GameState *gs, const GameState *before, Move move)
+{
+    GameState *promoted;
+    PieceType choice;
+
+    if (!is_promotion_move(before, move))
+    {
+        return;
+    }
+
+    choice = prompt_promotion_choice();
+    promoted = promote_pawn(gs, move.to, choice);
+    if (promoted != NULL)
+    {
+        *gs = *promoted;
+    }
+}
 
 int main(void)
 {
@@ -208,6 +264,7 @@ int main(void)
                                 hasPrev = 1;
                                 logMove(logfile, gs.turn, move);
                                 gs        = apply_move(&gs, move);
+                                apply_human_promotion_if_needed(&gs, &prevGs, move);
                                 validMove = 1;
                             }
                             else

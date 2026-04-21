@@ -11,6 +11,25 @@ void logMove(FILE *logfile, Color color, Move move);
 void init_board(GameState *gs);
 bool is_legal(MoveList *moves, Move move);
 bool inCheck(const GameState *gs, Color color);
+static void apply_human_promotion_if_needed(GameState *gs, const GameState *before, Move move);
+
+static void apply_human_promotion_if_needed(GameState *gs, const GameState *before, Move move)
+{
+    GameState *promoted;
+    PieceType choice;
+
+    if (!is_promotion_move(before, move))
+    {
+        return;
+    }
+
+    choice = dispPromotion();
+    promoted = promote_pawn(gs, move.to, choice);
+    if (promoted != NULL)
+    {
+        *gs = *promoted;
+    }
+}
 
 int main()
 {
@@ -184,6 +203,7 @@ int main()
                     hasPrev = 1;
                     logMove(logfile, gs.turn, move);
                     gs = apply_move(&gs, move);
+                    apply_human_promotion_if_needed(&gs, &prevGs, move);
                 }
                 break;
 
