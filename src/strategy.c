@@ -157,6 +157,7 @@ static int negamax(GameState *gs, int depth, int alpha, int beta)
 
     for (i = 0; i < moves.count; i++)
     {
+
         UndoData undo;
         make_move_in_place(gs, moves.moves[i], &undo);
 
@@ -179,6 +180,7 @@ static int negamax(GameState *gs, int depth, int alpha, int beta)
             break;
         }
     }
+
 
     return best;
 }
@@ -222,12 +224,16 @@ Move* SelectBestMove(GameState *gs, Color color, int depth)
         {
             break;
         }
+
+        best_at_depth = best_move;
         best_score_at_depth = -INF;
-        alpha               = -INF;
-        beta                = INF;
+        alpha = -INF;
+        beta = INF;
 
         for (i = 0; i < moves.count; i++)
         {
+
+
             UndoData undo;
             make_move_in_place(gs, moves.moves[i], &undo);
 
@@ -235,33 +241,35 @@ Move* SelectBestMove(GameState *gs, Color color, int depth)
 
             undo_move_in_place(gs, moves.moves[i], &undo);
 
-            if (score > best_score_at_depth)
-            {
-                if (!search_aborted)
-                {
-                    best_score = best_score_at_depth;
-                    best_move  = best_at_depth;
-                }
-                else
-                {
-                    break;
-                }
 
-                if (score > alpha)
-                {
-                    alpha = score;
-                }
+            if (search_aborted)
+            {
+                break;
+            }
+
+            if (i == 0 || score > best_score_at_depth)
+            {
+                best_score_at_depth = score;
+                best_at_depth = moves.moves[i];
+            }
+
+            if (score > alpha)
+            {
+                alpha = score;
             }
         }
 
-        best_score = best_score_at_depth;
-        best_move  = best_at_depth;
-
-        (void)best_score;
+        if (!search_aborted)
+        {
+            best_score = best_score_at_depth;
+            best_move = best_at_depth;
+        }
+        else
+        {
+            break;
+        }
     }
-    printf("finished depth %d, best score = %d\n", current_depth, best_score_at_depth);
-    printf("depth %d root move %d done, aborted=%d, score=%d\n",
-       current_depth, i, search_aborted, score);
+
 
     return &best_move;
 }
