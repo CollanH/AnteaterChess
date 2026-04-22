@@ -9,7 +9,7 @@
 #include <time.h>
 
 // window and board layout
-#define WINDOW_WIDTH 1180
+#define WINDOW_WIDTH 1460
 #define WINDOW_HEIGHT 760
 #define SQUARE_SIZE 80
 #define BOARD_X 30
@@ -405,7 +405,7 @@ static void renderMoveLogPanel(void) {
     yCursor += 6; 
 
     //each log entry 
-    for (i=9; i<logCount; i++) {
+    for (i=0; i<logCount; i++) {
         SDL_Color c; 
 
         if (strncmp(moveLog[i], "Yellow", 6) == 0) {
@@ -611,12 +611,12 @@ static void renderGameScreen(int showClocks)
         SDL_Color turnColor = (currentGameState->turn == YELLOW) ? (SDL_Color) {245,210,60,255} : (SDL_Color){70,140,255,255}; 
         drawText(turnStr, contentX, yCursor, turnColor, smallFont);
 
-        //moving panel to far right 
-        renderMoveLogPanel(); 
-        SDL_RenderPresent(renderer); 
+    
     }
 
-    SDL_RenderPresent(renderer);
+    //moving panel to far right 
+        renderMoveLogPanel(); 
+        SDL_RenderPresent(renderer); 
 }
 
 //pawn promotion screen : popup w/ choices q,r,b,n
