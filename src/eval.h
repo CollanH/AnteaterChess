@@ -2,6 +2,7 @@
 #ifndef EVAL_H
 #define EVAL_H
 #include "chess_types.h"
+#include <stdio.h>
 
 /*CENTIPAWN PIECE WEIGHTS*/
 static const int PIECE_VALUE[8] ={
@@ -97,8 +98,8 @@ static const int PST_ANTEATER[8][10]={
 
 /*PST TABLE*/
 static const int* PST_TABLE[8]={
-    EMPTY, //EMPTY
-    EMPTY, //KING
+    NULL, //EMPTY
+    (const int*)PST_KING, //KING
     (const int*) PST_QUEEN, 
     (const int*) PST_ANTEATER,
     (const int*) PST_BISHOP,
@@ -161,6 +162,8 @@ static const int DANGER_TABLE[100] = {
    512,512,512,512,512,512,512,512,512,512
 };
 
+// add implementation of a safety table  for the evalKingSafetey function 
+
 /*FUNCTION DECLARATION*/
 // Master evalution function - called by negamax
 int evaluate(GameState *gs);
@@ -178,5 +181,15 @@ int evalKingSafety(GameState *gs);
 int evalAnteater(GameState *gs);
 /*Returns 1 if the piece on square 'from' can attack square 'to' given the current board occupancy.Returns 0 otherwise.*/
 int canAttackSquare(GameState *gs, int fa, int ra, int fb, int rb);
+
+/*BETA: Reward Checkmate Setup*/
+/*Pieces close to enemy king*/
+int evalKingTropism(GameState *gs);
+/*How trapped is the king*/
+int evalKingEscape(GameState *gs);
+/*Back Rank Weakness*/
+int evalBackRank(GameState *gs);
+/*add a tiny bonus for pieces that are on the opponent's half of the board */
+int evalTempo(GameState *gs);
 
 #endif
