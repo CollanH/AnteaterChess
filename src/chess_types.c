@@ -1,6 +1,186 @@
 #include "chess_types.h"
 #include "string.h"
 #include "stdlib.h"
+// simple helper functions
+static inline bool in_bounds_sq(Square s)
+{
+	return s.rank >= 0 && s.rank < 8 && s.file >= A && s.file <= J;
+}
+
+static inline bool is_empty_piece(Piece p)
+{
+	return p.piecetype == EMPTY;
+}
+
+static inline Color opponent_color(Color color)
+{
+	return (color == YELLOW) ? BLUE : YELLOW;
+}
+
+static PieceList* piece_list_for_color(GameState *gs, Color color)
+{
+	return (color == YELLOW) ? &gs->yellow_pieces : &gs->blue_pieces;
+}
+
+static Square* king_square_for_color(GameState *gs, Color color)
+{
+	return (color == YELLOW) ? &gs->yellow_king_square : &gs->blue_king_square;
+}
+
+static bool anteater_has_chain_capture(const GameState *gs, Square square, Color color)
+{
+	static const int dr[4] = {-1, 1, 0, 0};
+	static const int df[4] = {0, 0, -1, 1};
+
+	for (int i = 0; i < 4; i++) {
+		Square target = make_square(square.rank + dr[i], square.file + df[i]);
+		Piece piece;
+
+		if (!in_bounds_sq(target)) {
+			continue;
+		}
+
+		piece = gs->board[target.rank][target.file];
+		if (piece.piecetype == ANT && piece.color != color) {
+			return true;
+		}
+	}
+
+	return false;
+}
+
+// resets the cache of all pieces
+static void reset_piece_cache(GameState *gs)
+{
+	gs->yellow_pieces.count = 0;
+	gs->blue_pieces.count = 0;
+	gs->yellow_king_square = make_square(-1, A);
+	gs->blue_king_square = make_square(-1, A);
+	// safety
+	for (int r = 0; r < 8; r++) {
+		for (int f = 0; f < 10; f++) {
+			gs->piece_list_index[r][f] = -1;
+		}
+	}
+}
+// add piece to cache
+static void add_piece_to_cache(GameState *gs, Square square, Piece piece)
+{
+	PieceList *list;
+	Square *king_square;
+	int index;
+
+	if (piece.piecetype == EMPTY) {
+		gs->piece_list_index[square.rank][square.file] = -1;
+		return;
+	}
+
+	list = piece_list_for_color(gs, piece.color);
+	// add at the back
+	index = list->count;
+	list->squares[index] = square;
+	list->count++;
+	// update the index to keep it accurate
+	gs->piece_list_index[square.rank][square.file] = index;
+
+	// have to edit king square in the game state if we add a king
+	if (piece.piecetype == KING) {
+		king_square = king_square_for_color(gs, piece.color);
+		*king_square = square;
+	}
+}
+// remove piece from cache(for captures)
+static void remove_piece_from_cache(GameState *gs, Square square, Piece piece)
+{
+	PieceList *list;
+	int index;
+	int last_index;
+	Square last_square;
+
+	if (piece.piecetype == EMPTY || !in_bounds_sq(square)) {
+		return;
+	}
+
+	// get the index of the piece that was captured
+	index = gs->piece_list_index[square.rank][square.file];
+	if (index < 0) {
+		return;
+	}
+
+	// place the back piece in the place of the deleted piece and decrement hte size
+	list = piece_list_for_color(gs, piece.color);
+	last_index = list->count - 1;
+	last_square = list->squares[last_index];
+	list->squares[index] = last_square;
+	list->count--;
+	// no more index because piece is gone
+	gs->piece_list_index[square.rank][square.file] = -1;
+
+	if (index != last_index) {
+		gs->piece_list_index[last_square.rank][last_square.file] = index;
+	}
+	// if king is somehow deleted fix king square
+	if (piece.piecetype == KING) {
+		*king_square_for_color(gs, piece.color) = make_square(-1, A);
+	}
+}
+
+static void move_piece_in_cache(GameState *gs, Square from, Square to, Piece piece)
+{
+	int index;
+
+	if (piece.piecetype == EMPTY) {
+		return;
+	}
+	// find the index of the piece
+	index = gs->piece_list_index[from.rank][from.file];
+	if (index < 0) {
+		return;
+	}
+	// fix the pieces location in the cache and the index
+	piece_list_for_color(gs, piece.color)->squares[index] = to;
+	gs->piece_list_index[to.rank][to.file] = index;
+	gs->piece_list_index[from.rank][from.file] = -1;
+
+	// fix king if it moves
+	if (piece.piecetype == KING) {
+		*king_square_for_color(gs, piece.color) = to;
+	}
+}
+
+void refresh_piece_cache(GameState *gs)
+{
+	if (gs == NULL) {
+		return;
+	}
+
+	reset_piece_cache(gs);
+	// fix the cache with the board info
+
+	for (int r = 0; r < 8; r++) {
+		for (int f = 0; f < 10; f++) {
+			Piece piece = gs->board[r][f];
+			if (piece.piecetype != EMPTY) {
+				add_piece_to_cache(gs, make_square(r, (File)f), piece);
+			}
+		}
+	}
+
+	gs->cache_valid = true;
+}
+
+bool is_promotion_move(const GameState *gs, Move move)
+{
+	Piece moved_piece;
+
+	if (gs == NULL || !in_bounds_sq(move.from) || !in_bounds_sq(move.to)) {
+		return false;
+	}
+
+	moved_piece = gs->board[move.from.rank][move.from.file];
+	return moved_piece.piecetype == ANT &&
+		(move.to.rank == 0 || move.to.rank == 7);
+}
 
 Square make_square(int rank, File file){
 	Square sq;
@@ -34,12 +214,14 @@ Move* moveList_at(MoveList* moveList, int index){
 	return &(moveList->moves[index]);
 }
 
-const Piece* piece_at(const GameState* gs, Square square){
+Piece* piece_at(GameState* gs, Square square){
 	return &(gs->board[square.rank][square.file]);
 }
 
 void replace_piece(GameState* gs, Piece piece, Square square){
 	gs->board[square.rank][square.file] = piece;
+	// ok to break the cache here cause its only used in the copy move
+	gs->cache_valid = false;
 
 }
 
@@ -64,123 +246,70 @@ GameState* undo(GameState* gs) {
 
 }
 
+GameState* promote_pawn(const GameState* gs, Square pawn, PieceType pt) {
+	GameState* new_gs = malloc(sizeof(GameState));
+	if (new_gs == NULL) {
+		return NULL;
+	}
+
+	*new_gs = *gs;
+
+	switch(pt) {
+		case QUEEN:
+			piece_at(new_gs, pawn)->piecetype = QUEEN;
+			break;
+		case KNIGHT:
+			piece_at(new_gs, pawn)->piecetype = KNIGHT;
+			break;
+		case BISHOP:
+			piece_at(new_gs, pawn)->piecetype = BISHOP;
+			break;
+		case ANTEATER:
+			piece_at(new_gs, pawn)->piecetype = ANTEATER;
+			break;
+		case ROOK:
+			piece_at(new_gs, pawn)->piecetype = ROOK;
+			break;
+		default:
+			break;
+	}
+
+	new_gs->prev_state = gs;
+	refresh_piece_cache(new_gs);
+	return new_gs;
+}
 
 GameState* make_move(const GameState* gs, Move move) {
 	GameState* new_gs = malloc(sizeof(GameState));
+	UndoData undo;
+
+	if (new_gs == NULL) {
+		return NULL;
+	}
+
 	*new_gs = *gs;
-
 	new_gs->prev_state = (GameState*)gs;
-	Piece piece = *piece_at(gs, move.from);
-	if(piece.piecetype!=ANTEATER) {
-		new_gs->anteater_ate = false;
-	}
-	else if(piece_at(gs,move.to)->piecetype == ANT) {
-		new_gs->anteater_ate = true;
-	}
-
-	if (square_equals(move.to, make_square(7, A))) {
-		new_gs->yellow_qscastle = false;
-	}
-	if (square_equals(move.to, make_square(7, J))) {
-		new_gs->yellow_kscastle = false;
-	}
-	if (square_equals(move.to, make_square(0, A))) {
-		new_gs->blue_qscastle = false;
-	}
-	if (square_equals(move.to, make_square(0, J))) {
-		new_gs->blue_kscastle = false;
-	}
-
-	if (piece.piecetype == ROOK) {
-		if (square_equals(move.from, make_square(7, A))) {
-			new_gs->yellow_qscastle = false;
-		}
-		else if (square_equals(move.from, make_square(7, J))) {
-			new_gs->yellow_kscastle = false;
-		}
-		else if (square_equals(move.from, make_square(0, A))) {
-			new_gs->blue_qscastle = false;
-		}
-		else if (square_equals(move.from, make_square(0, J))) {
-			new_gs->blue_kscastle = false;
-		}
-	}
-	else if (piece.piecetype == ANT) {
-		if (move.from.rank - move.to.rank == 2) {
-			new_gs->en_passant_square = make_square(move.to.rank + 1, move.to.file);
-		}
-		else if (move.from.rank - move.to.rank == -2) {
-			new_gs->en_passant_square = make_square(move.to.rank - 1, move.to.file);
-		}
-	}
-	else if (piece.piecetype == KING) {
-		if (piece.color == YELLOW) {
-			new_gs->yellow_qscastle = false;
-			new_gs->yellow_kscastle = false;
-		}
-		else {
-			new_gs->blue_qscastle = false;
-			new_gs->blue_kscastle = false;
-		}
-	}
-
-	if (piece.piecetype == ANT && square_equals(move.to, gs->en_passant_square)) {
-		if (piece.color == YELLOW) {
-			replace_piece(new_gs, make_piece(EMPTY, YELLOW),
-				make_square(gs->en_passant_square.rank + 1, gs->en_passant_square.file));
-		}
-		else {
-			replace_piece(new_gs, make_piece(EMPTY, YELLOW),
-				make_square(gs->en_passant_square.rank - 1, gs->en_passant_square.file));
-		}
-	}
-
-	if (piece.piecetype == KING && move.from.file - move.to.file == 2) {
-		if (piece.color == YELLOW) {
-			replace_piece(new_gs, make_piece(ROOK, YELLOW), make_square(7, E));
-			replace_piece(new_gs, make_piece(EMPTY, YELLOW), make_square(7, A));
-		}
-		else {
-			replace_piece(new_gs, make_piece(ROOK, BLUE), make_square(0, E));
-			replace_piece(new_gs, make_piece(EMPTY, YELLOW), make_square(0, A));
-		}
-	}
-	else if (piece.piecetype == KING && move.from.file - move.to.file == -2) {
-		if (piece.color == YELLOW) {
-			replace_piece(new_gs, make_piece(ROOK, YELLOW), make_square(7, G));
-			replace_piece(new_gs, make_piece(EMPTY, YELLOW), make_square(7, J));
-		}
-		else {
-			replace_piece(new_gs, make_piece(ROOK, BLUE), make_square(0, G));
-			replace_piece(new_gs, make_piece(EMPTY, YELLOW), make_square(0, J));
-		}
-	}
-
-	replace_piece(new_gs, piece, move.to);
-	replace_piece(new_gs, make_piece(EMPTY, YELLOW), move.from);
-
-	new_gs->turn = !new_gs->turn;
+	make_move_in_place(new_gs, move, &undo);
 
 	return new_gs;
 }
-static inline bool in_bounds_sq(Square s)
-{
-	return s.rank >= 0 && s.rank < 8 && s.file >= A && s.file <= J;
-}
 
-static inline bool is_empty_piece(Piece p)
-{
-	return p.piecetype == EMPTY;
+GameState* make_move_ai(const GameState* gs, Move move) {
+	return make_move(gs, move);
 }
 
 void undo_move_in_place(GameState *gs, Move move, const UndoData *undo)
 {
     Square from = move.from;
     Square to   = move.to;
-    int rankDistance = to.rank - from.rank;
-    int fileDistance = to.file - from.file;
-    int direction;
-    int i;
+
+    if (undo->flags & UNDO_WAS_NOOP) {
+        return;
+    }
+
+    if (!gs->cache_valid) {
+        refresh_piece_cache(gs);
+    }
 
     // restore simple state first
     gs->yellow_qscastle = (undo->flags & UNDO_YELLOW_QSCASTLE) != 0;
@@ -190,9 +319,14 @@ void undo_move_in_place(GameState *gs, Move move, const UndoData *undo)
     gs->anteater_ate    = (undo->flags & UNDO_ANTEATER_ATE) != 0;
     gs->turn            = (undo->flags & UNDO_TURN_BLUE) ? BLUE : YELLOW;
     gs->en_passant_square = undo->old_en_passant_square;
+    gs->anteater_chain_square = undo->old_anteater_chain_square;
 
     // undo castling rook move first so squares are free
     if (undo->flags & UNDO_WAS_CASTLE) {
+        move_piece_in_cache(gs,
+            undo->rook_to,
+            undo->rook_from,
+            gs->board[undo->rook_to.rank][undo->rook_to.file]);
         gs->board[undo->rook_from.rank][undo->rook_from.file] =
             gs->board[undo->rook_to.rank][undo->rook_to.file];
         gs->board[undo->rook_to.rank][undo->rook_to.file] =
@@ -200,32 +334,17 @@ void undo_move_in_place(GameState *gs, Move move, const UndoData *undo)
     }
 
     // move main piece back
+    move_piece_in_cache(gs, to, from, undo->moved_piece);
     gs->board[from.rank][from.file] = undo->moved_piece;
     gs->board[to.rank][to.file]     = make_piece(EMPTY, YELLOW);
 
     // restore captured piece
     if (in_bounds_sq(undo->captured_square) && !is_empty_piece(undo->captured_piece)) {
         gs->board[undo->captured_square.rank][undo->captured_square.file] = undo->captured_piece;
+        add_piece_to_cache(gs, undo->captured_square, undo->captured_piece);
     }
 
-    // undo anteater eaten path
-    if (undo->moved_piece.piecetype == ANTEATER) {
-        if (rankDistance == 0 && (fileDistance > 1 || fileDistance < -1)) {
-            direction = (fileDistance > 0) ? 1 : -1;
-            for (i = from.file + direction; i != to.file; i += direction) {
-                gs->board[from.rank][i] = make_piece(ANT, BLUE);
-            }
-        }
-
-        if (fileDistance == 0 && (rankDistance > 1 || rankDistance < -1)) {
-            direction = (rankDistance > 0) ? 1 : -1;
-            for (i = from.rank + direction; i != to.rank; i += direction) {
-                gs->board[i][from.file] = make_piece(ANT, BLUE);
-            }
-        }
-    }
-
-
+    gs->cache_valid = true;
 }
 
 void make_move_in_place(GameState *gs, Move move, UndoData *undo)
@@ -234,15 +353,19 @@ void make_move_in_place(GameState *gs, Move move, UndoData *undo)
     Square to   = move.to;
     Piece moved = gs->board[from.rank][from.file];
     Piece dest  = gs->board[to.rank][to.file];
-
+    bool anteater_capture;
+    bool keep_turn;
     int rankDistance;
     int fileDistance;
-    int direction;
-    int i;
+
+    if (!gs->cache_valid) {
+        refresh_piece_cache(gs);
+    }
 
     undo->moved_piece           = moved;
     undo->captured_piece        = make_piece(EMPTY, YELLOW);
     undo->old_en_passant_square = gs->en_passant_square;
+    undo->old_anteater_chain_square = gs->anteater_chain_square;
     undo->captured_square       = make_square(-1, A);
     undo->rook_from             = make_square(-1, A);
     undo->rook_to               = make_square(-1, A);
@@ -257,39 +380,44 @@ void make_move_in_place(GameState *gs, Move move, UndoData *undo)
 
     rankDistance = to.rank - from.rank;
     fileDistance = to.file - from.file;
+    anteater_capture = moved.piecetype == ANTEATER &&
+        dest.piecetype == ANT &&
+        dest.color != moved.color;
+    keep_turn = false;
+
+    if (moved.piecetype == ANTEATER &&
+        !is_empty_piece(dest) &&
+        (dest.piecetype != ANT || dest.color == moved.color)) {
+        undo->flags |= UNDO_WAS_NOOP;
+        return;
+    }
+
+    // normal capture on destination
+    if (!is_empty_piece(dest) &&
+        (moved.piecetype != ANTEATER || dest.piecetype == ANT)) {
+        undo->captured_piece  = dest;
+        undo->captured_square = to;
+        remove_piece_from_cache(gs, to, dest);
+    }
+	// update cache to reflect move
+    move_piece_in_cache(gs, from, to, moved);
 
     // default: move piece from -> to
     gs->board[to.rank][to.file]     = moved;
     gs->board[from.rank][from.file] = make_piece(EMPTY, YELLOW);
 
-    // normal capture on destination
-    if (!is_empty_piece(dest)) {
-        undo->captured_piece  = dest;
-        undo->captured_square = to;
-    }
-
-    // anteater special rule: eats ants along rank/file if moved >1 in straight line
     if (moved.piecetype == ANTEATER) {
-        if (rankDistance == 0 && (fileDistance > 1 || fileDistance < -1)) {
-            direction = (fileDistance > 0) ? 1 : -1;
-            for (i = from.file + direction; i != to.file; i += direction) {
-                // save only if piece exists; if multiple pieces can be eaten here,
-                // this undo format assumes they are always ants and can be restored
-                // by scanning again in undo.
-                gs->board[from.rank][i] = make_piece(EMPTY, YELLOW);
-            }
+        if (anteater_capture && anteater_has_chain_capture(gs, to, moved.color)) {
+            gs->anteater_ate = true;
+            gs->anteater_chain_square = to;
+            keep_turn = true;
+        } else {
+            gs->anteater_ate = false;
+            gs->anteater_chain_square = make_square(-1, A);
         }
-
-        if (fileDistance == 0 && (rankDistance > 1 || rankDistance < -1)) {
-            direction = (rankDistance > 0) ? 1 : -1;
-            for (i = from.rank + direction; i != to.rank; i += direction) {
-                gs->board[i][from.file] = make_piece(EMPTY, YELLOW);
-            }
-        }
-
-        gs->anteater_ate = true;
     } else {
         gs->anteater_ate = false;
+        gs->anteater_chain_square = make_square(-1, A);
     }
 
     // en passant: ant moves diagonally to empty square
@@ -300,6 +428,7 @@ void make_move_in_place(GameState *gs, Move move, UndoData *undo)
             undo->captured_piece  = gs->board[epCaptured.rank][epCaptured.file];
             undo->captured_square = epCaptured;
 
+            remove_piece_from_cache(gs, epCaptured, undo->captured_piece);
             gs->board[epCaptured.rank][epCaptured.file] = make_piece(EMPTY, YELLOW);
         }
     }
@@ -346,6 +475,10 @@ void make_move_in_place(GameState *gs, Move move, UndoData *undo)
                 gs->board[undo->rook_from.rank][undo->rook_from.file];
             gs->board[undo->rook_from.rank][undo->rook_from.file] =
                 make_piece(EMPTY, YELLOW);
+            move_piece_in_cache(gs,
+                undo->rook_from,
+                undo->rook_to,
+                gs->board[undo->rook_to.rank][undo->rook_to.file]);
         }
     }
 
@@ -365,14 +498,18 @@ void make_move_in_place(GameState *gs, Move move, UndoData *undo)
         if (square_equals(undo->captured_square, make_square(0, J))) gs->blue_kscastle   = false;
     }
 
-    // flip turn
-    gs->turn = (gs->turn == YELLOW) ? BLUE : YELLOW;
+    if (!keep_turn) {
+        gs->turn = (gs->turn == YELLOW) ? BLUE : YELLOW;
+    }
+
+    gs->cache_valid = true;
 }
 
 
 
 GameState initalize_empty_GameState() {
 	GameState gs;
+	memset(&gs, 0, sizeof(gs));
 	for(int i = 0; i < 8; i++){
 		for(int j = 0; j < 10; j++) {
 			gs.board[i][j] = make_piece(EMPTY, YELLOW);
@@ -383,12 +520,15 @@ GameState initalize_empty_GameState() {
 
 	gs.turn = YELLOW;
 	gs.anteater_ate = false;
+	gs.anteater_chain_square = make_square(-1, A);
 	gs.yellow_kscastle = true;
 	gs.yellow_qscastle = true;
 	gs.blue_kscastle = true;
 	gs.blue_qscastle = true;
 	gs.en_passant_square = make_square(-2,-1);
 	gs.prev_state = NULL;
+	reset_piece_cache(&gs);
+	gs.cache_valid = false;
 
 	return gs;
 }

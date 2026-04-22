@@ -13,7 +13,7 @@ bool inCheck(const GameState *gs, Color color);
 #define INF 1000000
 
 //time limit for iterative deepening, stop searching at 5 seconds
-#define TIME_LIMIT_SECS 5
+#define TIME_LIMIT_SECS 10
 
 //internal function declarations
 static int negamax(GameState *gs, int depth, int alpha, int beta);
@@ -70,91 +70,11 @@ static void sort_moves(const GameState *gs, MoveList *moves)
 GameState apply_move(const GameState *gs, Move move)
 {
     GameState nextState;
-    Square from;
-    Square to;
-    PieceType movedPiece;
-    Color currentTurn;
-    int rankDistance;
-    int fileDistance;
-    int direction;
-    int fileIdx;
-    int rankIdx;
+    UndoData undo;
 
     nextState              = *gs;
     nextState.prev_state   = NULL;
-    replace_piece(&nextState, *piece_at(gs, move.from), move.to);
-    replace_piece(&nextState, make_piece(EMPTY, YELLOW), move.from);
-
-    from = move.from;
-    to   = move.to;
-
-    movedPiece  = gs->board[from.rank][from.file].piecetype;
-    currentTurn = gs->turn;
-
-    if (movedPiece == ANTEATER)
-    {
-        rankDistance = to.rank - from.rank;
-        fileDistance = to.file - from.file;
-
-        if (rankDistance == 0 && (fileDistance > 1 || fileDistance < -1))
-        {
-            direction = (fileDistance > 0) ? 1 : -1;
-            for (fileIdx = from.file + direction; fileIdx != to.file; fileIdx += direction)
-                nextState.board[from.rank][fileIdx] = (Piece){EMPTY, YELLOW};
-        }
-
-        if (fileDistance == 0 && (rankDistance > 1 || rankDistance < -1))
-        {
-            direction = (rankDistance > 0) ? 1 : -1;
-            for (rankIdx = from.rank + direction; rankIdx != to.rank; rankIdx += direction)
-                nextState.board[rankIdx][from.file] = (Piece){EMPTY, YELLOW};
-        }
-
-        nextState.anteater_ate = true;
-    }
-    else
-    {
-        nextState.anteater_ate = false;
-    }
-
-    if (movedPiece == ANT)
-    {
-        fileDistance = to.file - from.file;
-        if (fileDistance != 0 && gs->board[to.rank][to.file].piecetype == EMPTY)
-            nextState.board[from.rank][to.file] = (Piece){EMPTY, YELLOW};
-    }
-
-    nextState.en_passant_square.rank = -1;
-    nextState.en_passant_square.file = A;
-
-    if (movedPiece == ANT)
-    {
-        rankDistance = to.rank - from.rank;
-        if (rankDistance == -2 || rankDistance == 2)
-        {
-            nextState.en_passant_square.rank = (from.rank + to.rank) / 2;
-            nextState.en_passant_square.file = from.file;
-        }
-    }
-
-    if (movedPiece == ANT && (to.rank == 0 || to.rank == 7))
-        nextState.board[to.rank][to.file].piecetype = QUEEN;
-
-    if (movedPiece == KING)
-    {
-        if (currentTurn == YELLOW)
-        {
-            nextState.yellow_kscastle = false;
-            nextState.yellow_qscastle = false;
-        }
-        else
-        {
-            nextState.blue_kscastle = false;
-            nextState.blue_qscastle = false;
-        }
-    }
-
-    nextState.turn = (currentTurn == YELLOW) ? BLUE : YELLOW;
+    make_move_in_place(&nextState, move, &undo);
 
     return nextState;
 }
@@ -203,11 +123,19 @@ static int negamax(GameState *gs, int depth, int alpha, int beta)
 
     for (i = 0; i < moves.count; i++)
     {
+        Color side_to_move = gs->turn;
 
         UndoData undo;
         make_move_in_place(gs, moves.moves[i], &undo);
 
-        score = -negamax(gs, depth - 1, -beta, -alpha);
+        if (gs->turn == side_to_move)
+        {
+            score = negamax(gs, depth - 1, alpha, beta);
+        }
+        else
+        {
+            score = -negamax(gs, depth - 1, -beta, -alpha);
+        }
 
         undo_move_in_place(gs, moves.moves[i], &undo);
 
@@ -282,12 +210,19 @@ Move* SelectBestMove(GameState *gs, Color color, int depth)
 
         for (i = 0; i < moves.count; i++)
         {
-
+            Color side_to_move = gs->turn;
 
             UndoData undo;
             make_move_in_place(gs, moves.moves[i], &undo);
 
-            score = -negamax(gs, current_depth - 1, -beta, -alpha);
+            if (gs->turn == side_to_move)
+            {
+                score = negamax(gs, current_depth - 1, alpha, beta);
+            }
+            else
+            {
+                score = -negamax(gs, current_depth - 1, -beta, -alpha);
+            }
 
             undo_move_in_place(gs, moves.moves[i], &undo);
 
@@ -320,6 +255,11 @@ Move* SelectBestMove(GameState *gs, Color color, int depth)
         }
     }
 
+    fprintf(stderr,
+            "search %s (elapsed=%.2f sec, target_depth=%d)\n",
+            search_aborted ? "aborted" : "completed",
+            (double)(clock() - start) / CLOCKS_PER_SEC,
+            depth);
 
     return &best_move;
 }

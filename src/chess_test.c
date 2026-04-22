@@ -210,7 +210,9 @@ void init_board(GameState *gs) {
     gs->turn=YELLOW; gs->yellow_kscastle=true; gs->yellow_qscastle=true;
     gs->blue_kscastle=true; gs->blue_qscastle=true;
     gs->anteater_ate=false; gs->en_passant_square=make_square(-1,A);
+    gs->anteater_chain_square = make_square(-1, A);
     gs->prev_state=NULL;
+    refresh_piece_cache(gs);
 }
 
 bool is_legal(MoveList *moves, Move move) {

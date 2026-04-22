@@ -11,6 +11,25 @@ void logMove(FILE *logfile, Color color, Move move);
 void init_board(GameState *gs);
 bool is_legal(MoveList *moves, Move move);
 bool inCheck(const GameState *gs, Color color);
+static void apply_human_promotion_if_needed(GameState *gs, const GameState *before, Move move);
+
+static void apply_human_promotion_if_needed(GameState *gs, const GameState *before, Move move)
+{
+    GameState *promoted;
+    PieceType choice;
+
+    if (!is_promotion_move(before, move))
+    {
+        return;
+    }
+
+    choice = dispPromotion();
+    promoted = promote_pawn(gs, move.to, choice);
+    if (promoted != NULL)
+    {
+        *gs = *promoted;
+    }
+}
 
 int main()
 {
@@ -156,7 +175,7 @@ int main()
                 hasPrev = 1;
                 aiMove(move);
                 logMove(logfile, gs.turn, move);
-                gs = *make_move(&gs, move);
+                gs = *make_move_ai(&gs, move);
                 break;
 
             //user vs user, or human side in user vs AI
@@ -189,6 +208,7 @@ int main()
                     hasPrev = 1;
                     logMove(logfile, gs.turn, move);
                     gs = *make_move(&gs, move);
+                    apply_human_promotion_if_needed(&gs, &prevGs, move);
                 }
                 break;
 
@@ -270,8 +290,10 @@ void init_board(GameState *gs)
     gs->blue_kscastle      = true;
     gs->blue_qscastle      = true;
     gs->anteater_ate       = false;
+    gs->anteater_chain_square = make_square(-1, A);
     gs->en_passant_square  = make_square(-1, A);
     gs->prev_state         = NULL;
+    refresh_piece_cache(gs);
 }
 
 //validates typed input against the move list, only used in textChess
