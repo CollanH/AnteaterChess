@@ -21,6 +21,13 @@
 #define PANEL_W 280
 #define PANEL_H 640
 
+//move log panel 
+#define LOG_X 1160
+#define LOG_Y 60
+#define LOG_W 280
+#define LOG_H 640
+#define LOG_MAX_ENTRIES 30 //how mnay moves to store and display 
+
 // different screens used by the gui
 typedef enum {
     SCREEN_MATCHUP,
