@@ -45,6 +45,13 @@ static SDL_Renderer *renderer = NULL;
 static TTF_Font *font = NULL;
 static TTF_Font *smallFont = NULL;
 
+//stopping anteater chaing
+static int stopChainBtnX =0; 
+static int stopChainBtnY = 0; 
+static int stopChainBtnW = 120; 
+static int stopChainBtnH = 44; 
+int stopChainPressed = 0; 
+
 
 //textures
 static SDL_Texture *pieceTextures[2][8]; 
@@ -142,8 +149,7 @@ static void loadPieceTextures(void) {
                 fprintf(stderr, "Warning: could not load %s: %s\n", pieceFileNames[color][pieceType], SDL_GetError()); 
             }
 
-        } else {
-            fprintf(stderr, "Warning, could not load %s, %s\n", pieceFileNames[color][pieceType], SDL_Error()); 
+        
         }
     }
 
@@ -579,7 +585,7 @@ static void renderGameScreen(int showClocks)
         // set and draw the undo button
         undoBtnW = contentW;
         undoBtnH = 44;
-        undoBtnX = contentX
+        undoBtnX = contentX;
         undoBtnY = yCursor;
 
         fillRect(undoBtnX, undoBtnY, undoBtnW, undoBtnH, 200, 50, 50);
@@ -592,7 +598,7 @@ static void renderGameScreen(int showClocks)
             stopChainBtnW = contentW; 
             stopChainBtnX = contentX; 
             stopChainBtnH = 44; 
-            stopChainBtnY = yCurosr; 
+            stopChainBtnY =yCursor; 
 
             //button 
             fillRect(stopChainBtnX, stopChainBtnY, stopChainBtnW, stopChainBtnH, 220,120,0); 
@@ -602,7 +608,7 @@ static void renderGameScreen(int showClocks)
 
         //showing player turn 
         const char *turnStr = (currentGameState->turn == YELLOW) ? "Yellow's turn" : "Blue's turn"; 
-        SDL_Color turnColor = (currentGameState0>turn == YELLOW) ? (SDL_Color) {245,210,60,255} : (SDL_Color){70,140,255,255}; 
+        SDL_Color turnColor = (currentGameState->turn == YELLOW) ? (SDL_Color) {245,210,60,255} : (SDL_Color){70,140,255,255}; 
         drawText(turnStr, contentX, yCursor, turnColor, smallFont);
 
         //moving panel to far right 
