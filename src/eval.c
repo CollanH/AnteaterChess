@@ -151,27 +151,6 @@ int evalMaterial(GameState *gs){
  return score;
 }
 
-int evalPST(GameState *gs){
-    int score = 0;
-    Color side = gs->turn;
-
-    for(int r = 0; r < 8; r++){
-        for(int f = 0; f < 10; f++){
-            Piece piece = gs->board[r][f];
-
-            if (piece.piecetype == EMPTY) continue;
-
-            const int (*table)[10] = (const int(*)[10]) PST_TABLE[piece.piecetype];
-            if(table == NULL) continue;
-            int lookupRank = (piece.color == YELLOW) ? r : (7-r);
-            int bonus = table[lookupRank][f];
-
-            if (piece.color == side) score += bonus;
-            else score -= bonus; 
-        }
-    }
- return score;
-}
 
 int evalAnteater(GameState *gs){
 
@@ -248,9 +227,6 @@ int evalPawnStructure(GameState *gs){
     int sideCount[10] = {0};
     int oppCount[10] = {0};
 
-    int sideScore = 0;
-    int oppScore = 0;
-
     /*Track passed ants in same pass*/
     for(int f = 0; f < 10; f++){
         for(int r = 0; r < 8; r++){
@@ -292,7 +268,6 @@ return score;
 int evalKingTropism(GameState *gs){
     int score = 0;
     Color side = gs->turn;
-    Color opp = getOpponent(side);
 
     int sideKf = -1;
     int sideKr = -1;
@@ -369,7 +344,6 @@ int evalTempo(GameState *gs){
 int evalKingEscape(GameState *gs){
     int score = 0;
     Color side = gs->turn;
-    Color opp = getOpponent(side);
 
     int sideEscape = 0;
     int oppEscape = 0;
@@ -442,14 +416,94 @@ int evalBackRank(GameState *gs){
 }
 return score;
 }
+
+int getGamePhase(GameState *gs){
+    int phase = 0;
+    for(int r = 0; r < 8; r++){
+        for(int f = 0; f < 10; f++){
+            Piece p = gs->board[r][f];
+            switch(p.piecetype){
+                case KNIGHT: phase += PHASE_KNIGHT; break;
+                case ROOK: phase += PHASE_ROOK; break;
+                case QUEEN: phase += PHASE_QUEEN; break;
+                case BISHOP: phase += PHASE_BISHOP; break;
+                default: break;
+            }
+        }
+    }
+    if (phase > PHASE_MAX) phase = PHASE_MAX;
+    return phase;
+}
+/*
+BLENDS OPENING AND ENG GAME PST VALUES BASED ON PHASE
+PHASE = PHASE_MAX -> FULL OPENING WEIGHT
+PHASE = 0 -> FULL ENDGAME WEIGHT
+PHASE = INBETWEEN -> LINEAR BLEND
+FORMULA: SCORE = (OPENSCORE * PHASE + ENDSCORE * (PHASE_MAX - PHASE)) / PHASE_MAX
+*/
+int taperedPST(GameState *gs, int phase){
+    int score = 0;
+    Color side = gs->turn;
+
+    for(int r = 0; r < 8; r++){
+        for(int f = 0; f < 10; f++){
+            Piece p = gs->board[r][f];
+            if(p.piecetype == EMPTY) continue;
+
+            int lookupRank = (p.color == YELLOW) ? r : (7-r);
+
+            int openScore = 0;
+            int endScore = 0;
+
+            switch(p.piecetype){
+                case ANT: 
+                openScore = PST_ANT_OPENING[lookupRank][f]; 
+                endScore = PST_ANT_END[lookupRank][f];
+                break;
+                case KNIGHT:
+                openScore = PST_KNIGHT_OPENING[lookupRank][f];
+                endScore = PST_KNIGHT_END[lookupRank][f];
+                break;
+                case BISHOP:
+                openScore = PST_BISHOP_OPENING[lookupRank][f];
+                endScore = PST_BISHOP_END[lookupRank][f];
+                break;
+                case QUEEN: 
+                openScore = PST_QUEEN_OPENING[lookupRank][f];
+                endScore = PST_QUEEN_END[lookupRank][f];
+                break;
+                case KING:
+                openScore = PST_KING_OPENING[lookupRank][f];
+                endScore = PST_KING_END[lookupRank][f];
+                break;
+                case ROOK:
+                openScore = PST_ROOK_OPENING[lookupRank][f];
+                endScore = PST_ROOK_END[lookupRank][f];
+                break;
+                case ANTEATER:
+                openScore = PST_ANTEATER_OPENING[lookupRank][f];
+                endScore = PST_ANTEATER_END[lookupRank][f];
+                break;
+                default:
+                break;
+            }
+            int blended = ((openScore * phase) + (endScore * (PHASE_MAX - phase))) / PHASE_MAX;
+
+            if(p.color == side) score += blended;
+            else score -= blended;
+        }
+    }
+    return score;
+}
+
 int evaluate(GameState *gs){
     int score = 0;
+    int phase = getGamePhase(gs);
 
     int material = evalMaterial(gs);
     //printf("Material: %d\n", material); fflush(stdout);
 
-    int pst = evalPST(gs);
-    //printf("PST: %d\n", pst); fflush(stdout);
+    int pst = taperedPST(gs, phase);
 
     int mobility = evalMobility(gs);
     //printf("Mobility: %d\n", mobility); fflush(stdout);
@@ -464,12 +518,17 @@ int evaluate(GameState *gs){
     //printf("Anteater: %d\n", anteater); fflush(stdout);
 
     int kingTropism = evalKingTropism(gs);
+    //printf("King Tropism: %d\n", kingTropism); flush(stdout);
 
     int kingEscape = evalKingEscape(gs);
+    //printf("King Escape: %d\n", kingEscape); flush(stdout);
 
     int backRank = evalBackRank(gs);
+    //printf("King Back Rank %d\n", backRank); flush(stdout);
 
     int tempo = evalTempo(gs);
+    //print("Tempo: %d\n", tempo); flush(stdout);
+
 
     score = material + pst + mobility + king + pawn + anteater + kingTropism + kingEscape + backRank + tempo;
     //printf("TOTAL: %d\n", score); fflush(stdout);
