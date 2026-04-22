@@ -47,6 +47,8 @@ static SDL_Texture *squareTextures[2];
 static PieceType promotionPiece = QUEEN; //which piece currently highlighted
 static int promotionPending = 0; //set to 1 when pawn reaches back rank 
 
+//stop anteater chain tbd
+
 //forward declarations
 static void renderGameScreen(int showClocks); 
 static void renderEndScreen(const char *message); 
@@ -81,17 +83,35 @@ static int undoBtnH = 50;
 // status/error message shown in the right panel
 static char statusMsg[128] = "";
 
+//move log 
+static char moveLog[LOG_MAX_ENTRIES][48]; 
+static int logCount = 0; 
+
 //picture file names
 static const char *pieceFileNames[2][8] = {
     
-    {"", "../board_images/yking.bmp", "../board_images/yqueen.bmp", "../board_images/yanteater.bmp", "../board_images/ybishop.bmp", "../board_images/yknight.bmp", "../board_images/yrook.bmp", "../board_images/yant.bmp" }, 
-    {"", "../board_images/bking.bmp", "../board_images/bqueen.bmp", "../board_images/banteater.bmp", "../board_images/bbishop.bmp", "../board_images/bknight.bmp", "../board_images/brook.bmp", "../board_images/bant.bmp"}
+    {"", "../board_images/yking.bmp", 
+    "../board_images/yqueen.bmp", 
+    "../board_images/yanteater.bmp", 
+    "../board_images/ybishop.bmp", 
+    "../board_images/yknight.bmp", 
+    "../board_images/yrook.bmp", 
+    "../board_images/yant.bmp" }, 
+
+    {"", "../board_images/bking.bmp", 
+    "../board_images/bqueen.bmp", 
+    "../board_images/banteater.bmp", 
+    "../board_images/bbishop.bmp", 
+    "../board_images/bknight.bmp", 
+    "../board_images/brook.bmp", 
+    "../board_images/bant.bmp"}
 };
 
 
 //loading piece bmp and square bmp 
 static void loadPieceTextures(void) {
     int color, pieceType; 
+    SDL_Surface *surf; 
 
     for (color = 0; color<2; color++) 
         for (pieceType =0; pieceType < 8; pieceType++)
@@ -99,25 +119,44 @@ static void loadPieceTextures(void) {
     squareTextures[0] = NULL;
     squareTextures[1] = NULL; 
 
-    //loading piece bmp
+    //loading piece bmp using sdl_loadbmp to convert to texture 
     for (color=0; color<2; color++) {
         for (pieceType=1; pieceType<8; pieceType++) {
-            pieceTextures[color][pieceType] = IMG_LoadTexture(renderer, pieceFileNames[color][pieceType]);
+            surf = SDL_LoadBMP(pieceFileNames[color][pieceType]); 
+            if (surf) {
+                SDL_SetColorKey(surf, SDL_TRUE, SDL_MapRGB(surf->format,255,0,255)); 
+                pieceTextures[color][pieceType] = SDL_CreateTextureFromSurface(renderer,surf); 
+                SDL_FreeSurface(surf); 
 
-            if (!pieceTextures[color][pieceType]) {
-                fprintf(stderr, "Warning: could not load %s: %s\n", pieceFileNames[color][pieceType], IMG_GetError()); 
-            } 
+                if(!pieceTextures[color][pieceType]) {
+                    fprintf(stderr, "Warning: texture failed for %s, %s\n", pieceFileNames[color][pieceType], SDL_GetError()); 
+                }
+            } else {
+                fprintf(stderr, "Warning: could not load %s: %s\n", pieceFileNames[color][pieceType], SDL_GetError()); 
+            }
+
+        } else {
+            fprintf(stderr, "Warning, could not load %s, %s\n", pieceFileNames[color][pieceType], SDL_Error()); 
         }
     }
 
     //board square bmps
-    squareTextures[0] = IMG_LoadTexture(renderer, "../board_images/ysquare.bmp"); 
-    squareTextures[1] = IMG_LoadTexture(renderer, "../board_images/bsquare.bmp"); 
+    surf = SDL_LoadBMP("../board_images/ysquare.bmp"); 
+    if(surf) {
+        squareTextures[0] = SDL_CreateTextureFromSurface(renderer,surf); 
+        SDL_FreeSurface(surf); 
+    } else {
+        fprintf(stderr, "Warning: could not load ysquare.bmp: %s\n", SDL_GetError()); 
+    }
 
-    if(!squareTextures[0])
-        fprintf(stderr, "Warning: could not load ../board_images/ysquare.bmp\n"); 
-    if(!squareTextures[1])
-        fprintf(stderr, "Warning: could not load ../board_images/bsquare.bmp\n"); 
+    surf = SDL_LoadBMP("../board_images/bsquare.bmp"); 
+    if(surf) {
+        squareTextures[1] = SDL_CreateTextureFromSurface(renderer, surf); 
+        SDL_FreeSurface(surf); 
+    
+    } else {
+        fprintf(stderr, "Warning: could not laod bsquare.bmp: %s\n", SDL_GetError()); 
+    }
 }
 
 //releasing textures from memory 
@@ -310,11 +349,72 @@ static void renderMenuScreen(const char *title, const char **options, int numOpt
     SDL_RenderPresent(renderer);
 }
 
+//move Log 
+void addMoveLog(Color color, Move move) {
+    char entry[48]; 
+    const char *colorStr = (color == YELLOW) ? "Yellow" : "Blue"; 
+    char fromFile = (char)('A'+move.from.file); 
+    char toFile   = (char)('A' + move.to.file);
+    int  fromRank = move.from.rank + 1;
+    int  toRank   = move.to.rank   + 1;
+ 
+    snprintf(entry, sizeof(entry), "%s: %c%d -> %c%d",
+             colorStr, fromFile, fromRank, toFile, toRank);
+ 
+    if (logCount < LOG_MAX_ENTRIES) {
+        strncpy(moveLog[logCount], entry, sizeof(moveLog[0]) - 1);
+        moveLog[logCount][sizeof(moveLog[0]) - 1] = '\0';
+        logCount++;
+    } else {
+        //making room for more entries 
+        int i;
+        for (i = 0; i < LOG_MAX_ENTRIES - 1; i++)
+            strncpy(moveLog[i], moveLog[i + 1], sizeof(moveLog[0]));
+        strncpy(moveLog[LOG_MAX_ENTRIES - 1], entry, sizeof(moveLog[0]) - 1);
+        moveLog[LOG_MAX_ENTRIES - 1][sizeof(moveLog[0]) - 1] = '\0';
+    }
+}
+
+//drawing move log 
+static void renderMoveLogPanel(void) {
+    int i ; 
+    int yCursor = LOG_Y + 10; 
+
+    //background
+    fillRect(LOG_X, LOG_Y, LOG_W, LOG_H, 35,35,35); 
+    
+    //title
+    drawText("MOVE LOG", LOG_X + 10, yCursor, (SDL_Color){255,255,255,255}, smallFont); 
+    yCursor += 28; 
+
+    SDL_SetRenderDrawColor(renderer,100,100,100,255); 
+    SDL_RenderDrawLine(renderer, LOG_X, yCursor, LOG_X + LOG_W, yCursor); 
+    yCursor += 6; 
+
+    //each log entry 
+    for (i=9; i<logCount; i++) {
+        SDL_Color c; 
+
+        if (strncmp(moveLog[i], "Yellow", 6) == 0) {
+            c = (SDL_Color){245,210,60,255}; 
+        } else {
+            c = (SDL_Color){70,140,255,255}; 
+        }
+    }
+
+    drawText(moveLog[i], LOG_X+6, yCursor, c, smallFont); 
+    yCursor += 20; 
+
+    if (yCursor > LOG_Y + LOG_H-20) 
+        break; 
+}
+
 // draw the main in-game screen
 static void renderGameScreen(int showClocks)
 {
     int row;
     int col;
+
 
     // clear the background
     SDL_SetRenderDrawColor(renderer, 40, 40, 40, 255);
@@ -327,6 +427,7 @@ static void renderGameScreen(int showClocks)
             int boardCol;
             int x;
             int y;
+            int squareIndex; 
             Piece p;
 
             // flip the board when the human is blue
@@ -341,30 +442,15 @@ static void renderGameScreen(int showClocks)
             x = BOARD_X + col * SQUARE_SIZE;
             y = BOARD_Y + row * SQUARE_SIZE;
 
-            // draw alternating square colors
-            if ((row + col) % 2 == 0) {
-                fillRect(x, y, SQUARE_SIZE, SQUARE_SIZE, 245, 230, 140);
-            } else {
-                fillRect(x, y, SQUARE_SIZE, SQUARE_SIZE, 70, 120, 190);
-            }
+            //draw square BMP
+            squareIndex = (row+col) %2; 
+            drawSquare(x,y,squareIndex); 
 
-            p = currentGameState->board[boardRow][boardCol];
+            p = currentGameState->board[boardRow][boardCol]; 
 
-            // draw the piece as a colored letter
-            if (p.piecetype != EMPTY) {
-                char txt[2];
-                SDL_Color c;
-
-                txt[0] = pieceLetter(p);
-                txt[1] = '\0';
-
-                if (p.color == YELLOW) {
-                    c = (SDL_Color){245, 210, 60, 255};
-                } else {
-                    c = (SDL_Color){70, 140, 255, 255};
-                }
-
-                drawText(txt, x + 30, y + 25, c, font);
+            //drawing bmp on top of square
+            if(p.piecetype != EMPTY) 
+                drawPiece(p,x,y); 
             }
         }
     }
@@ -372,6 +458,7 @@ static void renderGameScreen(int showClocks)
     // draw highlighted legal destination squares
     if (hasHighlight) {
         int i;
+        SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND); 
 
         for (i = 0; i < highlightMoves.count; i++) {
             int hcol;
@@ -394,6 +481,8 @@ static void renderGameScreen(int showClocks)
             SDL_SetRenderDrawColor(renderer, 0, 220, 0, 160);
             SDL_RenderFillRect(renderer, &rect);
         }
+
+        SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_NONE); 
     }
 
     // draw file labels at the bottom of the board
@@ -419,7 +508,7 @@ static void renderGameScreen(int showClocks)
         char lbl[8];
 
         snprintf(lbl, sizeof(lbl), "%d",
-                 (humanColor == YELLOW) ? (row + 1) : (8 - row));
+                 (humanColor == YELLOW) ? (8-row) : (row + 1)); 
 
         drawText(lbl,
                  BOARD_X - 20,
@@ -436,7 +525,7 @@ static void renderGameScreen(int showClocks)
         int contentX = PANEL_X + pad;
         int contentW = PANEL_W - 2 * pad;
         int yCursor = PANEL_Y + pad;
-        int msgBoxH = 120;
+        int msgBoxH = 80;
         char timeStr[32];
 
         // draw panel title
@@ -446,7 +535,7 @@ static void renderGameScreen(int showClocks)
                  (SDL_Color){255, 255, 255, 255},
                  font);
 
-        yCursor += 50;
+        yCursor += 45;
 
         // draw the two player clocks
         if (showClocks) {
@@ -458,7 +547,7 @@ static void renderGameScreen(int showClocks)
                      (SDL_Color){245, 210, 60, 255},
                      font);
 
-            yCursor += 40;
+            yCursor += 36;
 
             snprintf(timeStr, sizeof(timeStr), "Blue: %d:%02d",
                      blueSecs / 60, blueSecs % 60);
@@ -468,31 +557,51 @@ static void renderGameScreen(int showClocks)
                      (SDL_Color){70, 140, 255, 255},
                      font);
 
-            yCursor += 60;
+            yCursor += 50;
         }
 
         // draw the status message box
         fillRect(contentX, yCursor, contentW, msgBoxH, 70, 70, 70);
         drawText(statusMsg,
-                 contentX + 10,
-                 yCursor + 15,
+                 contentX + 8,
+                 yCursor + 10,
                  (SDL_Color){255, 255, 255, 255},
                  smallFont);
 
-        yCursor += msgBoxH + 40;
+        yCursor += msgBoxH + 20;
 
         // set and draw the undo button
-        undoBtnW = 160;
-        undoBtnH = 50;
-        undoBtnX = PANEL_X + (PANEL_W - undoBtnW) / 2;
+        undoBtnW = contentW;
+        undoBtnH = 44;
+        undoBtnX = contentX
         undoBtnY = yCursor;
 
         fillRect(undoBtnX, undoBtnY, undoBtnW, undoBtnH, 200, 50, 50);
         drawText("UNDO",
-                 undoBtnX + 45,
-                 undoBtnY + 12,
-                 (SDL_Color){255, 255, 255, 255},
-                 smallFont);
+                 undoBtnX + (undoBtnW / 2) - 20, undoBtnY + 12, (SDL_Color){255,255,255,255}, smallFont); 
+        yCursor += undoBtnH + 12; 
+
+        //stopping the chain button for the anteater 
+        if (currentGameState && currentGameState->anteater_ate) {
+            stopChainBtnW = contentW; 
+            stopChainBtnX = contentX; 
+            stopChainBtnH = 44; 
+            stopChainBtnY = yCurosr; 
+
+            //button 
+            fillRect(stopChainBtnX, stopChainBtnY, stopChainBtnW, stopChainBtnH, 220,120,0); 
+            drawText("STOP CHAIN", stopChainBtnX + (stopChainBtnW/2) -40, stopChainBtnY + 12, (SDL_Color){255,255,255,255}, smallFont); 
+            yCursor += stopChainBtnH+12; 
+        }
+
+        //showing player turn 
+        const char *turnStr = (currentGameState->turn == YELLOW) ? "Yellow's turn" : "Blue's turn"; 
+        SDL_Color turnColor = (currentGameState0>turn == YELLOW) ? (SDL_Color) {245,210,60,255} : (SDL_Color){70,140,255,255}; 
+        drawText(turnStr, contentX, yCursor, turnColor, smallFont);
+
+        //moving panel to far right 
+        renderMoveLogPanel(); 
+        SDL_RenderPresent(renderer); 
     }
 
     SDL_RenderPresent(renderer);
@@ -629,7 +738,6 @@ int guiInit(void)
         return 0;
     }
 
- 
 
     window = SDL_CreateWindow("Anteater Chess",
                               SDL_WINDOWPOS_CENTERED,
@@ -677,6 +785,7 @@ int guiInit(void)
 // clean up sdl resources
 void guiQuit(void)
 {
+    freePieceTextures(); 
     if (smallFont) {
         TTF_CloseFont(smallFont);
     }
