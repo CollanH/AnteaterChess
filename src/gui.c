@@ -16,10 +16,10 @@
 #define BOARD_Y 60
 
 // right-side info panel layout
-#define PANEL_X 860
-#define PANEL_Y 60
-#define PANEL_W 280
-#define PANEL_H 640
+#define PANEL_X   860
+#define PANEL_Y    60
+#define PANEL_W   280
+#define PANEL_H   640
 
 //move log panel 
 #define LOG_X 1160
@@ -407,13 +407,13 @@ static void renderMoveLogPanel(void) {
         } else {
             c = (SDL_Color){70,140,255,255}; 
         }
+
+        drawText(moveLog[i], LOG_X+6, yCursor, c, smallFont); 
+        yCursor += 20; 
+        if (yCursor > LOG_Y + LOG_H-20) 
+        break; 
     }
 
-    drawText(moveLog[i], LOG_X+6, yCursor, c, smallFont); 
-    yCursor += 20; 
-
-    if (yCursor > LOG_Y + LOG_H-20) 
-        break; 
 }
 
 // draw the main in-game screen
@@ -458,7 +458,6 @@ static void renderGameScreen(int showClocks)
             //drawing bmp on top of square
             if(p.piecetype != EMPTY) 
                 drawPiece(p,x,y); 
-            }
         }
     }
 
@@ -493,7 +492,7 @@ static void renderGameScreen(int showClocks)
     }
 
     // draw file labels at the bottom of the board
-    for (col = 0; col < 10; col++) {
+    for (col = 0; col <= 9; col++) {
         char lbl[2];
 
         if (humanColor == YELLOW) {
@@ -511,7 +510,7 @@ static void renderGameScreen(int showClocks)
     }
 
     // draw rank labels on the left of the board
-    for (row = 0; row < 8; row++) {
+    for (row = 0; row <= 7; row++) {
         char lbl[8];
 
         snprintf(lbl, sizeof(lbl), "%d",
