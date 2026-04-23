@@ -40,6 +40,9 @@ teststrategy: $(STRATEGY_TEST_SRCS)
 	$(CC) $(CFLAGS) -o $(BIN)/strategyTest $(STRATEGY_TEST_SRCS) -I$(SRC) -lm
 	$(BIN)/strategyTest
 
+run: $(BIN)/chess
+	cd $(BIN) && ./chess
+
 clean:
 	rm -f $(BIN)/chess $(BIN)/textChess $(BIN)/test $(BIN)/strategyTest
 

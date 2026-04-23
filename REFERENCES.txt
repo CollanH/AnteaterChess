@@ -1,0 +1,252 @@
+AI Strategy References — ChessEaters
+======================================
+All algorithms used in src/strategy.c are documented below with the exact
+source pages used. Where code was adapted from an online example, the source
+page is listed so the implementation can be compared directly.
+
+
+----------------------------------------------------------------------
+1. Negamax (Core Search Framework)
+----------------------------------------------------------------------
+
+Source page (contains code example):
+  Chess Programming Wiki — Negamax
+  https://www.chessprogramming.org/Negamax
+
+What it is:
+  Negamax is a simplified version of minimax. Instead of one player maximizing
+  and the other minimizing, both sides always maximize their own score and
+  negate it when returning to the parent. The score is always from the
+  perspective of whoever is moving right now.
+
+Our code in negamax():
+  score = -negamax(gs, depth - 1, -beta, -alpha);
+  The negative sign is the negation. -beta and -alpha flip the window.
+
+How we use it:
+  negamax() is our core recursive search. Every legal move is tried, the
+  resulting position is searched one level deeper, and the best score is kept.
+
+
+----------------------------------------------------------------------
+2. Alpha-Beta Pruning
+----------------------------------------------------------------------
+
+Source page (contains code example):
+  Chess Programming Wiki — Alpha-Beta
+  https://www.chessprogramming.org/Alpha-Beta
+
+What it is:
+  Two bounds are tracked through the search:
+    alpha — best score the current player is guaranteed to get
+    beta  — best score the opponent is guaranteed to get
+
+  If the current position is already better than what the opponent will allow
+  (score >= beta), stop searching immediately. The opponent would never let
+  us reach this position anyway.
+
+Our code:
+  if (alpha >= beta) { break; }
+  This exits the move loop the moment a beta cutoff is found.
+
+
+----------------------------------------------------------------------
+3. Iterative Deepening with Time Limit
+----------------------------------------------------------------------
+
+Source page (contains code example):
+  Chess Programming Wiki — Iterative Deepening
+  https://www.chessprogramming.org/Iterative_Deepening
+
+What it is:
+  Search depth 2, then 4, then 6, then 8, stopping when time runs out.
+  Each completed depth gives a valid best move. If time expires mid-search,
+  the result from the last fully completed depth is used.
+
+Our code in SelectBestMove():
+  for (current_depth = 2; current_depth <= depth; current_depth += 2)
+  best_move is only updated when a full depth completes without abort.
+
+
+----------------------------------------------------------------------
+4. MVV-LVA Move Ordering
+----------------------------------------------------------------------
+
+Source page (contains code example):
+  Chess Programming Wiki — MVV-LVA
+  https://www.chessprogramming.org/MVV-LVA
+
+What it is:
+  Sort moves before searching so the best-looking captures come first.
+  A pawn taking a queen scores higher than a queen taking a pawn.
+  Formula: score = PIECE_VALUE[victim] * 10 - PIECE_VALUE[attacker]
+
+Our code in score_move():
+  return PIECE_VALUE[victim] * 10 - PIECE_VALUE[attacker];
+  sort_moves() then insertion-sorts the list descending by this score.
+
+
+----------------------------------------------------------------------
+5. Quiescence Search
+----------------------------------------------------------------------
+
+Source page (contains code example):
+  Chess Programming Wiki — Quiescence Search
+  https://www.chessprogramming.org/Quiescence_Search
+
+What it is:
+  At depth 0, instead of scoring immediately, keep searching captures only
+  until the position is quiet (no captures left). Prevents the AI from
+  grabbing a piece and not seeing the recapture one move later.
+
+Our code in quiesce():
+  stand_pat = evaluate(gs);         -- score if we stop here
+  if (stand_pat >= beta) return beta;  -- already too good, cut off
+  -- then loop through captures only, skipping quiet moves
+
+
+----------------------------------------------------------------------
+6. Transposition Table
+----------------------------------------------------------------------
+
+Source page (contains code example):
+  Chess Programming Wiki — Transposition Table
+  https://www.chessprogramming.org/Transposition_Table
+
+What it is:
+  The same board position can be reached by different sequences of moves.
+  A transposition table is a hash map that stores positions we have already
+  searched, so we can return the cached result instead of re-searching.
+
+  Each entry stores: the position hash, the depth it was searched to, the
+  score, and a flag indicating whether the score is exact, an upper bound,
+  or a lower bound (from alpha-beta).
+
+Our code in negamax():
+  key = compute_hash(gs);
+  if (tt_probe(key, depth, alpha, beta, &tt_score)) return tt_score;
+  -- at the end:
+  tt_store(key, depth, best, flag);
+
+
+----------------------------------------------------------------------
+7. Zobrist Hashing
+----------------------------------------------------------------------
+
+Source page (contains code example):
+  Chess Programming Wiki — Zobrist Hashing
+  https://www.chessprogramming.org/Zobrist_Hashing
+
+What it is:
+  To use a transposition table you need to convert any board position into
+  a single number (a hash). Zobrist hashing does this:
+
+  Step 1 — at startup, generate a random 64-bit number for every possible
+  (piece type, color, square) combination and store them in a table.
+
+  Step 2 — to hash a board, start at 0 and XOR in the number for every
+  piece currently on the board.
+
+  XOR has a useful property: the same piece in the same place always
+  contributes the same bits, so the same position always gives the same
+  hash regardless of the move order used to reach it.
+
+Our code in compute_hash():
+  h ^= zob_piece[r][f][p.piecetype][p.color];
+  This line runs once per piece on the board. The result is an 80-square
+  scan (at most) using only XOR — extremely fast.
+
+The random numbers are generated by zobrist_init() using the xorshift64*
+algorithm (see section 8 below) before the first search.
+
+
+----------------------------------------------------------------------
+8. Xorshift64* Random Number Generator (used in zobrist_init)
+----------------------------------------------------------------------
+
+Source page:
+  Wikipedia — Xorshift
+  https://en.wikipedia.org/wiki/Xorshift
+
+  Original paper by Sebastiano Vigna (the specific variant we use):
+  https://vigna.di.unimi.it/ftp/papers/xorshift.pdf
+
+Our implementation in rand64():
+
+  uint64_t rand64(void)
+  {
+      zob_seed ^= zob_seed >> 12;
+      zob_seed ^= zob_seed << 25;
+      zob_seed ^= zob_seed >> 27;
+      return zob_seed * 0x2545F4914F6CDD1DULL;
+  }
+
+What each line does:
+
+  zob_seed ^= zob_seed >> 12;
+    Take the 64-bit seed. Shift a copy of it RIGHT by 12 bit positions
+    (the top 12 bits become zeros, everything else shifts down). XOR
+    the shifted copy into seed. This mixes some HIGH bits down into the
+    LOWER half of the number.
+
+  zob_seed ^= zob_seed << 25;
+    Shift a copy of seed LEFT by 25 bit positions (the bottom 25 bits
+    become zeros, everything else shifts up). XOR into seed. This mixes
+    some LOW bits UP into the higher half.
+
+  zob_seed ^= zob_seed >> 27;
+    Another right-shift XOR, finishing the mixing pass.
+
+  return zob_seed * 0x2545F4914F6CDD1DULL;
+    Multiply by a large constant. The specific number was found by
+    Vigna to produce the most statistically uniform output. This last
+    step is what makes it xorshift64* (the * means multiply).
+
+Why we use this instead of rand():
+  rand() on macOS only gives 31 bits of randomness. Combining two calls
+  as (rand() << 32) | rand() gives at most 62 bits. Worse, the bits are
+  not well-distributed — low bits from rand() repeat in short cycles.
+  Zobrist hashing needs 64-bit keys that look independent across all
+  (square, piece, color) combinations. Weak keys cause hash collisions
+  that corrupt the transposition table with wrong scores.
+  Xorshift64* produces a full 64-bit value, passes standard randomness
+  tests, and covers a period of 2^64 before repeating.
+
+How zob_seed is initialized (in zobrist_init):
+  srand((unsigned)time(NULL));
+  zob_seed = ((uint64_t)rand() << 32) | (uint64_t)rand();
+  Seeds from the system clock so keys are different each run.
+  xorshift requires a non-zero seed, so we default to 1 if the
+  seed happens to land on zero (extremely unlikely but possible).
+
+Why these specific shift amounts (12, 25, 27):
+  Vigna tested all possible shift triplets and these are the ones that
+  produce a sequence that does not repeat for 2^64 steps and passes
+  standard randomness tests. They are listed directly in his paper.
+
+
+----------------------------------------------------------------------
+9. Null Move Pruning
+----------------------------------------------------------------------
+
+Source page (contains code example):
+  Chess Programming Wiki — Null Move Pruning
+  https://www.chessprogramming.org/Null_Move_Pruning
+
+What it is:
+  Before searching all moves, try doing nothing (passing the turn). If even
+  doing nothing produces a score >= beta, the position is already so good
+  for the current player that the opponent would never allow it. Prune the
+  entire branch without searching any moves.
+
+  Only applied when depth >= 3 and not in check (you cannot legally pass
+  a turn while in check, and the score would be wrong).
+
+Our code in negamax():
+  if (gs->turn == YELLOW) { gs->turn = BLUE; } else { gs->turn = YELLOW; }
+  score = -negamax(gs, depth - 3, -beta, -beta + 1);
+  if (gs->turn == YELLOW) { gs->turn = BLUE; } else { gs->turn = YELLOW; }
+  if (score >= beta) return beta;
+
+  depth - 3 is the null move reduction (R=2): we search 2 plies shallower
+  than normal to quickly confirm whether the cutoff applies.

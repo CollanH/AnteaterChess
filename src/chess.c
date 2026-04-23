@@ -1,6 +1,8 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <time.h>
+#include <pthread.h>
 #include "chess_types.h"
 #include "strategy.h"
 #include "legalMoveGen.h"
@@ -12,6 +14,62 @@ void init_board(GameState *gs);
 bool is_legal(MoveList *moves, Move move);
 bool inCheck(const GameState *gs, Color color);
 static void apply_human_promotion_if_needed(GameState *gs, const GameState *before, Move move);
+static int  run_ai_search(GameState *gs, Color color, int depth, Move *out);
+
+//holds everything the AI thread needs, plus the result
+typedef struct
+{
+    GameState    gs_copy;
+    Color        color;
+    int          depth;
+    Move         result;
+    int          found;
+    volatile int done;
+} AISearchJob;
+
+static void *ai_thread_func(void *arg)
+{
+    AISearchJob *job = (AISearchJob *)arg;
+    Move        *m;
+
+    m = SelectBestMove(&job->gs_copy, job->color, job->depth);
+    if (m != NULL)
+    {
+        job->result = *m;
+        job->found  = 1;
+    }
+    job->done = 1;
+    return NULL;
+}
+
+//runs SelectBestMove on a background thread so the GUI stays alive while the AI thinks
+//returns 1 if a move was found, 0 if no legal moves
+static int run_ai_search(GameState *gs, Color color, int depth, Move *out)
+{
+    AISearchJob job;
+    pthread_t   thread;
+    Move        dummy;
+
+    memset(&dummy, 0, sizeof(dummy));
+    job.gs_copy = *gs;
+    job.color   = color;
+    job.depth   = depth;
+    job.found   = 0;
+    job.done    = 0;
+
+    pthread_create(&thread, NULL, ai_thread_func, &job);
+
+    //keep rendering until the AI finishes
+    while (!job.done)
+        aiMove(dummy);
+
+    pthread_join(&thread, NULL);
+
+    if (job.found)
+        *out = job.result;
+
+    return job.found;
+}
 
 static void apply_human_promotion_if_needed(GameState *gs, const GameState *before, Move move)
 {
@@ -43,6 +101,7 @@ int main()
     Color      humanColor;
     Color      winner;
     int        depth;
+    int        diff;
 
     int        clockSecs;
     int        yellowSecs;
@@ -52,7 +111,6 @@ int main()
     int        elapsed;
 
     Move       move;
-    Move      *aiMoveResult;
     MoveList   legalMoves;
 
     int        running;
@@ -83,17 +141,31 @@ int main()
 
         case 1:
             //user vs AI, need difficulty and color
-            depth      = difficultyMenu() * 2;  //1->2, 2->4, 3->6
+            diff = difficultyMenu();
+            if (diff < 3)
+            {
+                depth = diff * 2;  //easy=2, medium=4
+            }
+            else
+            {
+                depth = 8;  //hard=8
+            }
             humanColor = colorMenu();
             break;
 
         case 2:
             //AI vs AI, just need difficulty
-            depth = difficultyMenu() * 2;
+            diff = difficultyMenu();
+            if (diff < 3)
+            {
+                depth = diff * 2;  //easy=2, medium=4
+            }
+            else
+            {
+                depth = 8;  //hard=8
+            }
             break;
 
-        default:
-            break;
     }
 
     init_board(&gs);
@@ -164,42 +236,46 @@ int main()
         {
             //AI vs AI
             case 2:
-                aiMoveResult = SelectBestMove(&gs, gs.turn, depth);
-                if (aiMoveResult == NULL)
+                if (!run_ai_search(&gs, gs.turn, depth, &move))
                 {
                     running = 0;
                     break;
                 }
-                move    = *aiMoveResult;
                 prevGs  = gs;
                 hasPrev = 1;
-                aiMove(move);
                 logMove(logfile, gs.turn, move);
                 gs = *make_move_ai(&gs, move);
                 break;
 
-            //user vs user, or human side in user vs AI
+            //user vs user, always a human turn
             case 0:
+                dispLegalMoves(&legalMoves);
+                move = getMove(&gs);
+
+                //TODO: coordinate undo signal from GUI with Oreo
+                prevGs  = gs;
+                hasPrev = 1;
+                logMove(logfile, gs.turn, move);
+                gs = *make_move(&gs, move);
+                apply_human_promotion_if_needed(&gs, &prevGs, move);
+                break;
+
+            //user vs AI — AI moves on its turn, human moves on theirs
             case 1:
-                if (matchup == 1 && gs.turn != humanColor)
+                if (gs.turn != humanColor)
                 {
-                    //AI turn in user vs AI
-                    aiMoveResult = SelectBestMove(&gs, gs.turn, depth);
-                    if (aiMoveResult == NULL)
+                    if (!run_ai_search(&gs, gs.turn, depth, &move))
                     {
                         running = 0;
                         break;
                     }
-                    move    = *aiMoveResult;
                     prevGs  = gs;
                     hasPrev = 1;
-                    aiMove(move);
                     logMove(logfile, gs.turn, move);
                     gs = *make_move(&gs, move);
                 }
                 else
                 {
-                    //human turn, GUI handles hover and legal move highlighting
                     dispLegalMoves(&legalMoves);
                     move = getMove(&gs);
 
@@ -210,9 +286,6 @@ int main()
                     gs = *make_move(&gs, move);
                     apply_human_promotion_if_needed(&gs, &prevGs, move);
                 }
-                break;
-
-            default:
                 break;
         }
     }

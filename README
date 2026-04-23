@@ -3,7 +3,7 @@ ChessEaters, EECS 22L, UC Irvine
 April 2026
 Version 1.0 (Alpha)
 
-Authors: Shawn Harrington, Claire Lin, Jordan Le, Tara Pai, Yani Montanez, Aurea Juarez
+Authors: Collan Harrington, Claire Nguyen, Jordan Le, Tara Pai, Yanilette Montano, Aurea Jolly
 
 Anteater Chess is a modified version of chess played on a 10x8 board with two extra
 pieces called Anteaters. The goal is to checkmate the opponent's king. The program

@@ -104,21 +104,21 @@ static int logCount = 0;
 //picture file names
 static const char *pieceFileNames[2][8] = {
     
-    {"", "../board_images/yking.bmp", 
-    "../board_images/yqueen.bmp", 
-    "../board_images/yanteater.bmp", 
-    "../board_images/ybishop.bmp", 
-    "../board_images/yknight.bmp", 
-    "../board_images/yrook.bmp", 
-    "../board_images/yant.bmp" }, 
+    {"", "../board_images.bmp/yking.bmp", 
+    "../board_images.bmp/yqueen.bmp", 
+    "../board_images.bmp/yanteater.bmp", 
+    "../board_images.bmp/ybishop.bmp", 
+    "../board_images.bmp/yknight.bmp", 
+    "../board_images.bmp/yrook.bmp", 
+    "../board_images.bmp/yant.bmp" }, 
 
-    {"", "../board_images/bking.bmp", 
-    "../board_images/bqueen.bmp", 
-    "../board_images/banteater.bmp", 
-    "../board_images/bbishop.bmp", 
-    "../board_images/bknight.bmp", 
-    "../board_images/brook.bmp", 
-    "../board_images/bant.bmp"}
+    {"", "../board_images.bmp/bking.bmp", 
+    "../board_images.bmp/bqueen.bmp", 
+    "../board_images.bmp/banteater.bmp", 
+    "../board_images.bmp/bbishop.bmp", 
+    "../board_images.bmp/bknight.bmp", 
+    "../board_images.bmp/brook.bmp", 
+    "../board_images.bmp/bant.bmp"}
 };
 
 
@@ -154,7 +154,7 @@ static void loadPieceTextures(void) {
     }
 
     //board square bmps
-    surf = SDL_LoadBMP("../board_images/ysquare.bmp"); 
+    surf = SDL_LoadBMP("../board_images.bmp/ysquare.bmp"); 
     if(surf) {
         squareTextures[0] = SDL_CreateTextureFromSurface(renderer,surf); 
         SDL_FreeSurface(surf); 
@@ -162,7 +162,7 @@ static void loadPieceTextures(void) {
         fprintf(stderr, "Warning: could not load ysquare.bmp: %s\n", SDL_GetError()); 
     }
 
-    surf = SDL_LoadBMP("../board_images/bsquare.bmp"); 
+    surf = SDL_LoadBMP("../board_images.bmp/bsquare.bmp"); 
     if(surf) {
         squareTextures[1] = SDL_CreateTextureFromSurface(renderer, surf); 
         SDL_FreeSurface(surf); 

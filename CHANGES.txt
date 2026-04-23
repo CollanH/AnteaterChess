@@ -1,0 +1,234 @@
+Strategy Engine Changes — ChessEaters
+======================================
+File modified: src/strategy.c
+Authors: Collan Harrington
+
+
+OVERVIEW
+--------
+The AI engine uses negamax with alpha-beta pruning as its core search. On top
+of that foundation we added move ordering, quiescence search, iterative
+deepening, and a node-count time guard. Each change is documented below with
+what it does and why it was added.
+
+
+----------------------------------------------------------------------
+CHANGE 1: MVV-LVA Move Ordering
+Functions: score_move(), sort_moves()
+----------------------------------------------------------------------
+
+WHAT:
+  Before searching any position, all legal moves are sorted so that the most
+  promising moves (captures of high-value pieces by low-value pieces) are
+  searched first. Two functions handle this:
+
+    score_move() — assigns each move an integer score:
+      score = PIECE_VALUE[victim] * 10 - PIECE_VALUE[attacker]
+      A queen captured by a pawn scores highest; a king captured by a queen
+      scores lowest among captures. Quiet moves score 0.
+
+    sort_moves() — insertion sort descending by score, putting captures at the
+      front of the list and quiet moves at the back.
+
+WHY:
+  Alpha-beta pruning is only effective when good moves are searched first. If
+  the best move happens to be last in the list, alpha-beta prunes nothing and
+  degenerates to a plain minimax. Ordering captures first (MVV-LVA) gives
+  alpha-beta the best chance to cut off branches early, which in practice
+  reduces the number of nodes searched by roughly 3x compared to random
+  ordering.
+
+  PIECE_VALUE[] is imported from eval.h so the ordering is consistent with
+  the same values the board evaluator uses to score positions.
+
+
+----------------------------------------------------------------------
+CHANGE 2: Iterative Deepening with Time Limit
+Functions: SelectBestMove(), time_up()
+----------------------------------------------------------------------
+
+WHAT:
+  Instead of searching directly to the requested depth, SelectBestMove()
+  searches depth 2 first, then depth 4, then 6, and so on up to the target
+  depth. Each completed iteration updates best_move. If the clock expires
+  mid-iteration, the result from the last fully completed depth is used.
+
+  time_up() reads clock() to check elapsed time. A 5-second limit is enforced
+  via TIME_LIMIT_SECS.
+
+WHY:
+  A fixed-depth search has no way to stop cleanly mid-search. Iterative
+  deepening gives us a complete best move at every even depth, so if time runs
+  out we always have a reasonable answer. It also provides better move ordering
+  at deeper iterations because the best move found at depth N tends to be a
+  good move to try first at depth N+2 (this is implicit in the root move list
+  order maintained across iterations).
+
+
+----------------------------------------------------------------------
+CHANGE 3: Node Count Time Guard
+Variable: node_count (static global)
+Function: time_up()
+----------------------------------------------------------------------
+
+WHAT:
+  clock() is a system call with measurable overhead. Calling it on every single
+  search node — which can be millions per second — adds up. node_count is
+  incremented on every time_up() call; the actual clock() read only fires when
+  node_count is a multiple of 2048 (checked via bitwise AND):
+
+    if (node_count++ & 2047) return false;
+
+  node_count is reset to 0 at the start of each SelectBestMove() call.
+
+WHY:
+  Reduces the number of clock() system calls by a factor of 2048 with no
+  meaningful loss in time accuracy (2048 nodes takes microseconds). This
+  noticeably reduces CPU load during long searches.
+
+
+----------------------------------------------------------------------
+CHANGE 4: Quiescence Search
+Function: quiesce()
+----------------------------------------------------------------------
+
+WHAT:
+  At depth 0 (leaf nodes), instead of immediately returning evaluate(), the
+  engine enters quiesce(). Quiescence search keeps looking at captures only
+  until the position is "quiet" — no captures remain — then returns the score.
+
+  Algorithm:
+    1. Score the position as-is (stand_pat). If it already beats beta, return
+       immediately (the opponent won't let us reach this position anyway).
+    2. Update alpha if stand_pat beats it (we can always choose to stop here).
+    3. If qdepth is exhausted, return alpha.
+    4. Loop through legal moves. Skip all non-captures. For each capture, make
+       the move, recurse with qdepth-1, undo. Update alpha/beta as normal.
+
+  quiesce() is capped at 2 extra plies (passed as qdepth=2 from negamax).
+
+WHY:
+  Without quiescence search the engine suffers from the "horizon effect": it
+  might capture a queen at the last depth level, score it as +9, and stop —
+  not seeing that the opponent recaptures next move. The position looked great
+  at the depth limit but is actually a blunder.
+
+  Quiescence search eliminates this by making sure every leaf position is
+  tactically stable before scoring it. The engine will not walk into a losing
+  exchange it couldn't see past its depth limit.
+
+  The qdepth cap of 2 prevents the search from exploding in positions with long
+  capture chains (which could recurse arbitrarily deep without a cap).
+
+
+----------------------------------------------------------------------
+CHANGE 5: Removed Duplicate sort_moves Calls
+----------------------------------------------------------------------
+
+WHAT:
+  sort_moves() was being called twice in a row in both negamax() and
+  SelectBestMove() — once right after legalMoveGen(), and again immediately
+  after. The second call in each location was redundant and removed.
+
+WHY:
+  Sorting is O(n^2) via insertion sort. Calling it twice on the same list with
+  no changes in between was pure wasted work. Removed to reduce CPU overhead.
+
+
+----------------------------------------------------------------------
+CHANGE 6: Time Limit Corrected (10s -> 5s -> 3s)
+----------------------------------------------------------------------
+
+WHAT:
+  TIME_LIMIT_SECS was set to 10 during a debugging session and not reverted.
+  Restored to 5 seconds, then trimmed further to 3 seconds.
+
+WHY:
+  In AI vs AI mode, 10 seconds per move means up to 20 seconds per round. At
+  3 seconds the game stays fast while still giving the engine enough time to
+  complete iterative deepening to a useful depth.
+
+
+----------------------------------------------------------------------
+CHANGE 7: Xorshift64* Random Number Generator
+Variables: zob_seed (new global)
+Function: rand64()
+----------------------------------------------------------------------
+
+WHAT:
+  rand64() previously combined two rand() calls:
+    return ((uint64_t)rand() << 32) | (uint64_t)rand();
+  This gives at most 62 bits of randomness and rand()'s low bits repeat
+  in short cycles, meaning Zobrist keys were not truly independent.
+
+  Replaced with xorshift64* from Sebastiano Vigna's paper (see REFERENCES.txt
+  section 8). A new global zob_seed holds the generator state. zobrist_init()
+  seeds it from time(NULL) before generating any keys.
+
+WHY:
+  Weak Zobrist keys mean different board positions produce the same hash more
+  often than they should. When two different positions share a key the
+  transposition table returns a cached score for the wrong position, causing
+  the AI to make incorrect decisions. True 64-bit keys from xorshift64* keep
+  collision rates negligibly low across the full game tree.
+
+
+----------------------------------------------------------------------
+CHANGE 8: Transposition Table Size Increased (1<<18 -> 1<<20)
+----------------------------------------------------------------------
+
+WHAT:
+  TT_SIZE increased from 262,144 entries (1<<18, ~5 MB) to 1,048,576
+  entries (1<<20, ~20 MB).
+
+WHY:
+  A larger table means fewer positions are overwritten before they can be
+  reused. At depth 8 with iterative deepening the engine visits millions of
+  nodes; a table that is too small turns into a near-cache-miss on every
+  lookup and removes most of the benefit of transposition detection.
+  20 MB is still within the typical memory budget for a desktop application.
+
+
+----------------------------------------------------------------------
+CHANGE 9: Check Extension — Added then Reverted
+Function: negamax()
+----------------------------------------------------------------------
+
+WHAT:
+  Added ext = 1 when in check so every recursive call searched one extra
+  ply. Reverted after unit testing showed it caused the depth-8 checkmate
+  test to fail.
+
+WHY REVERTED:
+  The extension had no cap on how deep it could compound. When a checking
+  (but non-mating) move appeared early in the sorted move list, each
+  recursive call added +1 depth back, keeping effective depth constant and
+  creating a near-infinite search tree. The 3-second time limit fired
+  before the actual mating move (later in the list) was ever evaluated.
+
+  Checkmate detection does not require the extension — negamax already
+  returns the mate score when legalMoveGen returns 0 moves and the side
+  is in check, at whatever depth that terminal node is reached. Removing
+  the extension restored correct mate-finding at depth 8.
+
+
+----------------------------------------------------------------------
+CHANGE 10: Mate-Distance Scoring
+Function: negamax()
+----------------------------------------------------------------------
+
+WHAT:
+  Checkmate was previously returned as a flat -INF regardless of how many
+  moves away it was. Added a ply parameter to negamax (distance from the
+  root). Checkmate now returns -(INF - ply) instead of -INF.
+
+WHY:
+  When multiple moves all lead to forced mate, they all scored the same
+  flat INF. Alpha-beta collapses the window to (-INF, -INF) after the
+  first INF score is found, so every subsequent move trivially returns INF
+  without searching. The first legal move in the list won, regardless of
+  whether it delivered immediate checkmate or a 7-move mate.
+
+  With ply-distance scoring, an immediate mate-in-1 scores INF-1 = 999999
+  and a mate-in-8 scores INF-8 = 999992. The strict > comparison in
+  SelectBestMove then correctly prefers the shortest available mate.
