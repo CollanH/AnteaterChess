@@ -303,9 +303,21 @@ int main()
 //TODO: implement move logging
 void logMove(FILE *logfile, Color color, Move move)
 {
-    (void)logfile;
-    (void)color;
-    (void)move;
+    const char *colorStr = (color == YELLOW)? "YELLOW" : "BLUE"; 
+    char fromFile = (char)('A'+move.from.file); 
+    char toFile = (char)('A' + move.to.file); 
+    int fromRank = move.from.rank+1; 
+    int toRank = move.to.rank + 1; 
+
+    //writing to log file
+    if(logfile != NULL) {
+        fprintf(logfile, "%s %c%d -> %c%d\n", colorStr, fromFile, fromRank, toFile, toRank); 
+        fflush (logfile); 
+    }
+    printf("%s: %c%d -> %c%d\n", colorStr, fromFile, fromRank, toFile, toRank); 
+    fflush(stdout); 
+
+    addMoveLog(color, move); 
 }
 
 //board[0] = blue back rank (rank 8, top)

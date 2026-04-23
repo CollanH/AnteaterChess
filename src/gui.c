@@ -1001,7 +1001,7 @@ void displayBoard(GameState *gs, int ySecs, int bSecs, Color hColor)
     setGameState(gs);
     setHumanColor(hColor);
     currentScreen = SCREEN_GAME;
-    strcpy(statusMsg, "click source square, then destination");
+    strcpy(statusMsg, "click source square, \nthen destination");
 }
 
 // store legal moves to highlight on the board
@@ -1087,7 +1087,7 @@ Move getMove(GameState *gs)
                         hasHighlight = 1;
 
                         if (pieceMoves.count == 0) {
-                            snprintf(statusMsg, sizeof(statusMsg), "that piece has no legal moves");
+                            snprintf(statusMsg, sizeof(statusMsg), "that piece has no legal \n moves");
                         } else {
                             snprintf(statusMsg, sizeof(statusMsg), "piece selected");
                         }
