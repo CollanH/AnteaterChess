@@ -66,8 +66,11 @@ int evalMobility(GameState *gs){
             if(piece.piecetype == EMPTY) continue;
             if(piece.piecetype == ANT) continue; // ant handled in evalPawnStructure
             if(piece.piecetype == KING) continue; // king handled in evalKingSafety
-    
+
+            int phase = getGamePhase(gs);
             int weight = MOB_WEIGHTS[piece.piecetype];
+
+            if(piece.piecetype == QUEEN && phase >= 20) weight = 3;
             int mobilityCount = 0;
             int df, dr;
 
