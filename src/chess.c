@@ -9,7 +9,7 @@
 #include "gui.h"
 
 //function declarations
-void logMove(FILE *logfile, Color color, Move move);
+void logMove(FILE *logfile, Color color, Move move, int isUndo);
 void init_board(GameState *gs);
 bool is_legal(MoveList *moves, Move move);
 bool inCheck(const GameState *gs, Color color);
@@ -17,8 +17,8 @@ static void apply_human_promotion_if_needed(GameState *gs, const GameState *befo
 static int  run_ai_search(GameState *gs, Color color, int depth, Move *out);
 
 //gui signals 
-extern int undoPressed; 
-extern int stopChain; 
+int wasUndoPressed(void);
+extern int stopChainPressed; 
 extern int logCount; 
 
 //holds everything the AI thread needs, plus the result
@@ -99,8 +99,7 @@ int main()
     GameState  gs;
     GameState  prevGs;    //TODO: wire up undo signal from GUI with Oreo
     int        hasPrev;   //TODO: wire up undo signal from GUI with Oreo
-    (void)prevGs;
-    (void)hasPrev;
+   
 
     int        matchup;
     Color      humanColor;
@@ -248,7 +247,7 @@ int main()
                 }
                 prevGs  = gs;
                 hasPrev = 1;
-                logMove(logfile, gs.turn, move);
+                logMove(logfile, gs.turn, move, 0);
                 gs = *make_move_ai(&gs, move);
                 break;
 
@@ -256,11 +255,29 @@ int main()
             case 0:
                 dispLegalMoves(&legalMoves);
                 move = getMove(&gs);
+                int isUndo = wasUndoPressed();
+
+                if (wasStopChainPressed()) {
+                gs.anteater_ate = false;
+                gs.anteater_chain_square = make_square(-1, A);
+                gs.turn = (gs.turn == YELLOW) ? BLUE : YELLOW;
+                stopChainPressed = 0;
+                break;
+                }
 
                 //TODO: coordinate undo signal from GUI with Oreo
-                prevGs  = gs;
+                    if (wasUndoPressed()) {
+                        if (hasPrev) {
+                            logMove(logfile, prevGs.turn, move, 1); 
+                            gs = prevGs;
+                            hasPrev = 0;
+                        }
+                        break;
+                    }
+            
+                prevGs = gs;
                 hasPrev = 1;
-                logMove(logfile, gs.turn, move);
+                logMove(logfile, gs.turn, move, 0);
                 gs = *make_move(&gs, move);
                 apply_human_promotion_if_needed(&gs, &prevGs, move);
                 break;
@@ -269,25 +286,35 @@ int main()
             case 1:
                 if (gs.turn != humanColor)
                 {
+                    
                     if (!run_ai_search(&gs, gs.turn, depth, &move))
                     {
                         running = 0;
                         break;
                     }
-                    prevGs  = gs;
-                    hasPrev = 1;
-                    logMove(logfile, gs.turn, move);
+                    
+                    logMove(logfile, gs.turn, move, 0);
                     gs = *make_move(&gs, move);
                 }
                 else
                 {
+
                     dispLegalMoves(&legalMoves);
                     move = getMove(&gs);
+                    int isUndo = wasUndoPressed();
 
                     //TODO: coordinate undo signal from GUI with Oreo
+                    if (wasUndoPressed()) {
+                        if (hasPrev) {
+                            logMove(logfile, prevGs.turn, move, 1); 
+                            gs = prevGs;
+                            hasPrev = 0; 
+                        }
+                        break;
+                    }
                     prevGs  = gs;
                     hasPrev = 1;
-                    logMove(logfile, gs.turn, move);
+                    logMove(logfile, gs.turn, move, 0);
                     gs = *make_move(&gs, move);
                     apply_human_promotion_if_needed(&gs, &prevGs, move);
                 }
@@ -306,7 +333,7 @@ int main()
 }
 
 //TODO: implement move logging
-void logMove(FILE *logfile, Color color, Move move)
+void logMove(FILE *logfile, Color color, Move move, int isUndo)
 {
     const char *colorStr = (color == YELLOW)? "YELLOW" : "BLUE"; 
     char fromFile = (char)('A'+move.from.file); 
@@ -322,7 +349,11 @@ void logMove(FILE *logfile, Color color, Move move)
     printf("%s: %c%d -> %c%d\n", colorStr, fromFile, fromRank, toFile, toRank); 
     fflush(stdout); 
 
-    addMoveLog(color, move); 
+    if (isUndo)
+    addMoveLog(color, (Move){move.to, move.from});
+    else
+    addMoveLog(color, move);
+
 }
 
 //board[0] = blue back rank (rank 8, top)

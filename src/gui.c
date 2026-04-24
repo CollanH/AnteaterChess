@@ -263,7 +263,7 @@ static void textWrap(const char *text, int x, int y, int maxw, int lineh, SDL_Co
     line [0] = '\0'; 
     while (*p) {
         int wlen = 0; 
-        while (*p && *p != ' ' ** wlen < 62)
+        while (*p && *p != ' ' && wlen < 62)
             word[wlen++] = *p++; 
         word [wlen] = '\0'; 
         if (*p == ' ') 
@@ -1116,6 +1116,7 @@ Move getMove(GameState *gs)
 
                 // first click selects a piece
                 if (clickCount == 0) {
+                    
                     if (clickedPiece.piecetype != EMPTY && clickedPiece.color == gs->turn) {
                         firstClick = sq;
                         clickCount = 1;
@@ -1137,6 +1138,7 @@ Move getMove(GameState *gs)
 
                         if (pieceMoves.count == 0) {
                             snprintf(statusMsg, sizeof(statusMsg), "that piece has no legal moves");
+                            clickCount = 0;
                         } else {
                             snprintf(statusMsg, sizeof(statusMsg), "piece selected");
                         }
@@ -1260,4 +1262,12 @@ void printError(const char *msg)
 void dispUndo(void)
 {
     undoPressed = 1;
+}
+int wasUndoPressed(void)
+{
+    return undoPressed;
+}
+int wasStopChainPressed(void)
+{
+    return stopChainPressed;
 }

@@ -30,6 +30,8 @@ void dispTimeout(Color loser);
 void aiMove(Move move);
 void printError(const char *msg);
 void dispUndo(void);
+int wasUndoPressed(void);
+int wasStopChainPressed(void);
 extern int stopChainPressed; 
 
 #endif
