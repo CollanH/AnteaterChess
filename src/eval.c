@@ -1,7 +1,6 @@
 #include "eval.h"
 #include "chess_types.h"
 #include <stdlib.h>
-//#include "stdio.h" for testing & debugging
 
 /*HELPER FUNCTIONS DECLARATIONS*/
 int isClear(GameState *gs, int fa, int ra, int fb, int rb);
@@ -10,8 +9,6 @@ Color getOpponent(Color current);
 int KingDangerScore(GameState *gs, Color side);
 int shieldPenalty(GameState *gs, Color side);
 int evalPassedAnts(GameState *gs, Color side);
-int evalDoubledAnts(GameState *gs, Color side);
-int evalIsolatedAnts(GameState *gs, Color side);
 int evalTempo(GameState *gs);
 
 
@@ -84,8 +81,7 @@ int evalMobility(GameState *gs){
                     int possible = 1;
                     switch(piece.piecetype){
                         case KNIGHT:
-                            possible = ((abs(df)==2 && abs(dr)==1) ||
-                                        (abs(df)==1 && abs(dr)==2));
+                            possible = (abs(df)==2 && abs(dr)==1) || (abs(df)==1 && abs(dr)==2);
                             break;
                         case BISHOP:
                             possible = (abs(df) == abs(dr));
@@ -616,7 +612,7 @@ int KingDangerScore(GameState* gs, Color side){
                         int possible = 1;
                         switch(attacker.piecetype){
                             case KNIGHT:
-                            possible = (abs(df)==2 || abs(dr)==1) && (abs(df)==1 || abs(dr)==2);
+                            possible = (abs(df)==2 && abs(dr)==1) || (abs(df)==1 && abs(dr)==2);
                             break;
 
                             case BISHOP:
@@ -736,54 +732,9 @@ int evalPassedAnts(GameState *gs, Color side){
             }
 
             if(passed){
-                int bonus = (side == YELLOW) ? r*10 : (9-r) * 10;
+                int bonus = (side == YELLOW) ? r*10 : (7-r) * 10;
                 score += bonus;
             }
-        }
-    }
-    return score;
-}
-
-int evalDoubledAnts(GameState *gs, Color side){
-    int score = 0;
-    for(int f = 0; f < 10; f++){
-        int count = 0;
-        for(int r = 0; r < 8; r++){
-            Piece piece = gs->board[r][f];
-
-            if(piece.piecetype == ANT && piece.color == side) count ++;
-        }
-        if(count > 1) score += (count - 1) * DOUBLED_ANT_PENALTY;
-    }
-    return score;
-}
-
-int evalIsolatedAnts(GameState* gs, Color side){
-    int score = 0;
-    for(int r = 0; r < 8; r++){
-        for(int f = 0; f < 10; f++){
-            Piece piece = gs->board[r][f];
-            
-            if(piece.piecetype != ANT || piece.color != side) continue;
-
-            int isolated = 1;
-
-            for(int df = -1; df <= 1; df += 2){
-                int nf = df + f;
-
-                if(nf < 0 || nf > 9) continue;
-
-                for(int rr = 0; rr < 8; rr++){
-                    Piece neighbor = gs->board[rr][nf];
-
-                    if(neighbor.piecetype == ANT && neighbor.color == side){
-                        isolated = 0;
-                        break;
-                    }
-                }
-                if(!isolated) break;
-            }
-            if(isolated) score += ISOLATED_ANT_PENALTY;
         }
     }
     return score;
