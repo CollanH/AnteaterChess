@@ -16,6 +16,11 @@ bool inCheck(const GameState *gs, Color color);
 static void apply_human_promotion_if_needed(GameState *gs, const GameState *before, Move move);
 static int  run_ai_search(GameState *gs, Color color, int depth, Move *out);
 
+//gui signals 
+extern int undoPressed; 
+extern int stopChain; 
+extern int logCount; 
+
 //holds everything the AI thread needs, plus the result
 typedef struct
 {

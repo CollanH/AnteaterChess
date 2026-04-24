@@ -98,8 +98,8 @@ static int undoBtnH = 50;
 static char statusMsg[128] = "";
 
 //move log 
-static char moveLog[LOG_MAX_ENTRIES][48]; 
-static int logCount = 0; 
+char moveLog[LOG_MAX_ENTRIES][48]; 
+int logCount = 0; 
 
 //picture file names
 static const char *pieceFileNames[2][8] = {
@@ -249,6 +249,47 @@ static void drawText(const char *text, int x, int y, SDL_Color color, TTF_Font *
 
     SDL_DestroyTexture(texture);
     SDL_FreeSurface(surface);
+}
+
+//text wrap so that it doesnt overflow box 
+static void textWrap(const char *text, int x, int y, int maxw, int lineh, SDL_Color color, TTF_Font *f) {
+    char line[256]; 
+    char word [64]; 
+    char test [256]; 
+    const char *p = text; 
+    int curY = y; 
+    int w, h; 
+
+    line [0] = '\0'; 
+    while (*p) {
+        int wlen = 0; 
+        while (*p && *p != ' ' ** wlen < 62)
+            word[wlen++] = *p++; 
+        word [wlen] = '\0'; 
+        if (*p == ' ') 
+            p++; 
+
+        //adding word to current 
+        if (line[0] != '\0')
+            snprintf(test, sizeof(test), "%s, %s", line, word); 
+        else 
+            snprintf(test, sizeof(test), "%s", word); 
+
+        TTF_SizeText(f, test, &w, &h); 
+
+        if (w >maxw && line[0] != '\0') {
+            //line full 
+            drawText (line, x, curY, color, f); 
+            curY += lineh; 
+            snprintf(line, sizeof(line), "%s", word);
+        } else {
+            snprintf(line,sizeof(line), "%s", test); 
+        }
+
+        if(line[0] != '\0')
+            drawText(line, x, curY, color, f); 
+        
+    }
 }
 //drawing piece from bmp 
 static void drawPiece(Piece p, int x, int y) {
@@ -1001,7 +1042,7 @@ void displayBoard(GameState *gs, int ySecs, int bSecs, Color hColor)
     setGameState(gs);
     setHumanColor(hColor);
     currentScreen = SCREEN_GAME;
-    strcpy(statusMsg, "click source square, \nthen destination");
+    strcpy(statusMsg, "click source square, then destination");
 }
 
 // store legal moves to highlight on the board
@@ -1025,7 +1066,7 @@ Move getMove(GameState *gs)
     hasHighlight = 0;
     pieceMoves.count = 0;
 
-    while (!moveReady && !undoPressed) {
+    while (!moveReady && !undoPressed && !stopChainPressed) {
         renderGameScreen(1);
 
         while (SDL_PollEvent(&e)) {
@@ -1047,6 +1088,14 @@ Move getMove(GameState *gs)
                     clickCount = 0;
                     hasHighlight = 0;
                     break;
+                }
+
+                if (currentGameState && currentGameState->anteater_ate && pointInRect(e.button.x, e.button.y, stopChainBtnX, stopChainBtnY, stopChainBtnW, stopChainBtnH)) {
+                    stopChainPressed = 1; 
+                    clickCount = 0; 
+                    hasHighlight = 0; 
+                    snprintf(statusMsg, sizeof(statusMsg), "Chain stopped!"); 
+                    break; 
                 }
 
                 // ignore clicks outside the board
@@ -1087,7 +1136,7 @@ Move getMove(GameState *gs)
                         hasHighlight = 1;
 
                         if (pieceMoves.count == 0) {
-                            snprintf(statusMsg, sizeof(statusMsg), "that piece has no legal \n moves");
+                            snprintf(statusMsg, sizeof(statusMsg), "that piece has no legal moves");
                         } else {
                             snprintf(statusMsg, sizeof(statusMsg), "piece selected");
                         }
