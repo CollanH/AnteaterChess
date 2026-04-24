@@ -323,6 +323,8 @@ int evalTempo(GameState *gs){
             if(p.piecetype == KING) continue;
             if(p.piecetype == EMPTY) continue;
             if(p.piecetype == ANT) continue;
+            if(p.piecetype == QUEEN) continue;
+            if(p.piecetype == ROOK) continue;
 
             int inEnemyHalf = 0;
 
