@@ -13,7 +13,7 @@ int matchupMenu(void);
 Color colorMenu(void);
 int difficultyMenu(void);
 int clockMenu(void);
-void addMoveLog(Color color, Move move); 
+void addMoveLog(Color color, Move move, Color humanColor); 
 
 void displayBoard(GameState *gs, int yellowSecs, int blueSecs, Color humanColor);
 void dispLegalMoves(MoveList *moves);
@@ -30,8 +30,15 @@ void dispTimeout(Color loser);
 void aiMove(Move move);
 void printError(const char *msg);
 void dispUndo(void);
-int wasUndoPressed(void);
-int wasStopChainPressed(void);
-extern int stopChainPressed; 
+// polling
+typedef struct {
+    int undo;
+    int stopChain;
+    int ret;
+} GuiInput;
+GuiInput pollGuiInput(void);
+int wasReturnPressed(void);
 
+
+extern int stopChainPressed; 
 #endif
