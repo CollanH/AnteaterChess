@@ -1,7 +1,7 @@
 #include "eval.h"
 #include "chess_types.h"
 #include <stdlib.h>
-
+#include <stdio.h>
 /*HELPER FUNCTIONS DECLARATIONS*/
 int isClear(GameState *gs, int fa, int ra, int fb, int rb);
 int isClearDiagonal(GameState *gs, int fa, int ra, int fb, int rb);
@@ -207,8 +207,41 @@ int evalAnteater(GameState *gs){
                 // reward chain (scale it)
                 bonus += length * length * ANTEATER_ADJ_BONUS;
                 // quadratic scaling rewards longer chains more
-            }
 
+                // penalize anteater sitting on starting squares
+                int yellowStart1[2] = {7, 3};  // rank 7, file D
+                int yellowStart2[2] = {7, 6};  // rank 7, file G  
+                int blueStart1[2]   = {0, 3};  // rank 0, file D
+                int blueStart2[2]   = {0, 6};  // rank 0, file G
+
+                if(myColor == YELLOW){
+                    if((r == yellowStart1[0] && f == yellowStart1[1]) ||
+                    (r == yellowStart2[0] && f == yellowStart2[1])){
+                        bonus -= 30;  // penalize staying home
+                    }
+                }
+                if(myColor == BLUE){
+                    if((r == blueStart1[0] && f == blueStart1[1]) ||
+                    (r == blueStart2[0] && f == blueStart2[1])){
+                        bonus -= 30;
+                    }
+                }
+            }
+            /*Proximity bonus - anteater for being close to enemy ants*/
+            for(int er = 0; er < 8; er++){
+                for(int ef = 0; ef < 10; ef++){
+                    Piece target = gs->board[er][ef];
+                    if(target.piecetype != ANT || target.color != enemy) continue;
+
+                    //chebyshev distance to enemy ant
+                    int dist = (abs(f-ef) > abs(r-er)) ? abs(f-ef) : abs(r-ef);
+
+                    //only reward if reasonably close
+                    if(dist <= 4){
+                        bonus += (5-dist) * 3;
+                    }
+                }
+            }
             if(myColor == side) score += bonus;
             else score -= bonus;
         }
@@ -247,15 +280,15 @@ int evalPawnStructure(GameState *gs){
     /*isolated ants - one loop over files*/
     for(int f = 0; f < 10; f++){
     if(sideCount[f] > 0){
-        int hasNeighbour = (f > 0 && sideCount[f-1] > 0) ||
+        int hasNeighbor = (f > 0 && sideCount[f-1] > 0) ||
                            (f < 9 && sideCount[f+1] > 0);
-        if(!hasNeighbour)
+        if(!hasNeighbor)
             score -= sideCount[f] * ISOLATED_ANT_PENALTY;
     }
     if(oppCount[f] > 0){              /* separate block — correct */
-        int hasNeighbour = (f > 0 && oppCount[f-1] > 0) ||
+        int hasNeighbor = (f > 0 && oppCount[f-1] > 0) ||
                            (f < 9 && oppCount[f+1] > 0);
-        if(!hasNeighbour)
+        if(!hasNeighbor)
             score += oppCount[f] * ISOLATED_ANT_PENALTY;
     }
 }                                     /* closes for loop */
@@ -497,42 +530,24 @@ int taperedPST(GameState *gs, int phase){
     return score;
 }
 
+
 int evaluate(GameState *gs){
     int score = 0;
     int phase = getGamePhase(gs);
 
     int material = evalMaterial(gs);
-    //printf("Material: %d\n", material); fflush(stdout);
-
     int pst = taperedPST(gs, phase);
-
     int mobility = evalMobility(gs);
-    //printf("Mobility: %d\n", mobility); fflush(stdout);
-
     int king = evalKingSafety(gs);
-    //printf("KingSafety: %d\n", king); fflush(stdout);
-
     int pawn = evalPawnStructure(gs);
-    //printf("PawnStruct: %d\n", pawn); fflush(stdout);
-
     int anteater = evalAnteater(gs);
-    //printf("Anteater: %d\n", anteater); fflush(stdout);
-
     int kingTropism = evalKingTropism(gs);
-    //printf("King Tropism: %d\n", kingTropism); flush(stdout);
-
     int kingEscape = evalKingEscape(gs);
-    //printf("King Escape: %d\n", kingEscape); flush(stdout);
-
     int backRank = evalBackRank(gs);
-    //printf("King Back Rank %d\n", backRank); flush(stdout);
-
     int tempo = evalTempo(gs);
-    //print("Tempo: %d\n", tempo); flush(stdout);
 
-
-    score = material + pst + mobility + king + pawn + anteater + kingTropism + kingEscape + backRank + tempo;
-    //printf("TOTAL: %d\n", score); fflush(stdout);
+    score = material + pst + mobility + king + pawn + anteater + 
+            kingTropism + kingEscape + backRank + tempo;
 
     return score;
 }

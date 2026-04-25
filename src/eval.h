@@ -90,14 +90,14 @@ static const int PST_KING_OPENING[8][10] = {
 };
 
 static const int PST_ANTEATER_OPENING[8][10] = {
-    {-15, -10,  -5,  -5,  -5,  -5,  -5,  -5, -10, -15},
-    {-10,   5,  10,  10,  10,  10,  10,  10,   5, -10},
-    { -5,  10,  15,  15,  15,  15,  15,  15,  10,  -5},
-    { -5,  10,  15,  25,  25,  25,  25,  15,  10,  -5},
-    { -5,  10,  15,  25,  25,  25,  25,  15,  10,  -5},
-    { -5,  10,  15,  15,  15,  15,  15,  15,  10,  -5},
-    {-10,   5,  10,  10,  10,  10,  10,  10,   5, -10},
-    {-15, -10,  -5,  -5,  -5,  -5,  -5,  -5, -10, -15}
+    {-15, -10,  -5,  -5,  -5,  -5,  -5,  -5, -10, -15},  // row 0 - enemy back rank
+    {-10,   5,  15,  20,  20,  20,  20,  15,   5, -10},   // row 1 - strong push forward
+    { -5,  10,  20,  25,  25,  25,  25,  20,  10,  -5},   // row 2
+    { -5,  10,  20,  30,  35,  35,  30,  20,  10,  -5},   // row 3 - center
+    { -5,  10,  20,  30,  35,  35,  30,  20,  10,  -5},   // row 4 - center
+    { -5,  10,  20,  25,  25,  25,  25,  20,  10,  -5},   // row 5
+    {-10,   5,  15,  20,  20,  20,  20,  15,   5, -10},   // row 6 - starting rank
+    {-15, -10,  -5,  -5,  -5,  -5,  -5,  -5, -10, -15}   // row 7 - home rank
 };
 
 /*PST Table for end game phase*/
@@ -211,7 +211,7 @@ static const int ATTACKER_WEIGHT[8]={
 #define SHIELD_MISSING 5
 #define SHIELD_PUSHED 2
 /*Anteater bonus per adjacent enemy ant*/
-#define ANTEATER_ADJ_BONUS 10
+#define ANTEATER_ADJ_BONUS 25
 
 static const int DANGER_TABLE[100] = {
    0,  0,  1,  2,  3,  5,  7, 10, 14, 20,
