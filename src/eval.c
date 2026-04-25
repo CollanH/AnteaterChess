@@ -237,9 +237,10 @@ int evalAnteater(GameState *gs){
                     int dist = (abs(f-ef) > abs(r-er)) ? abs(f-ef) : abs(r-ef);
 
                     //only reward if reasonably close
-                    if(dist <= 4){
-                        bonus += (5-dist) * 3;
-                    }
+                    // only apply proximity bonus if anteater has advanced
+                    int anteaterAdvanced = (myColor == YELLOW && r <= 4) || (myColor == BLUE && r >= 3);
+
+                    if(anteaterAdvanced && dist <= 4) bonus += (5 - dist) * 3;
                 }
             }
             if(myColor == side) score += bonus;
