@@ -11,11 +11,18 @@ TEXT_SRCS = $(SRC)/textChess.c $(SRC)/strategy.c $(SRC)/eval.c \
 
 TEST_SRCS = $(SRC)/test.c $(SRC)/chess_types.c $(SRC)/legalMoveGen.c
 
-SDL2_PREFIX  = $(shell brew --prefix sdl2)
-SDL2T_PREFIX = $(shell brew --prefix sdl2_ttf)
-SDL2I_PREFIX = $(shell brew --prefix sdl2_image)
-CFLAGS      += -I$(SDL2_PREFIX)/include -I$(SDL2_PREFIX)/include/SDL2 -I$(SDL2T_PREFIX)/include -I$(SDL2I_PREFIX)/include
-LIBS         = -L$(SDL2_PREFIX)/lib -L$(SDL2T_PREFIX)/lib -L$(SDL2I_PREFIX)/lib -lSDL2 -lSDL2_ttf -lSDL2_image -lm
+UNAME := $(shell uname)
+
+ifeq ($(UNAME), Darwin)
+    SDL2_PREFIX  = $(shell brew --prefix sdl2)
+    SDL2T_PREFIX = $(shell brew --prefix sdl2_ttf)
+    SDL2I_PREFIX = $(shell brew --prefix sdl2_image)
+    CFLAGS      += -I$(SDL2_PREFIX)/include -I$(SDL2_PREFIX)/include/SDL2 -I$(SDL2T_PREFIX)/include -I$(SDL2I_PREFIX)/include
+    LIBS         = -L$(SDL2_PREFIX)/lib -L$(SDL2T_PREFIX)/lib -L$(SDL2I_PREFIX)/lib -lSDL2 -lSDL2_ttf -lSDL2_image -lm
+else
+    CFLAGS      += $(shell sdl2-config --cflags)
+    LIBS         = $(shell sdl2-config --libs) -lSDL2_ttf -lSDL2_image -lm
+endif
 
 all: $(BIN)/chess
 
