@@ -32,11 +32,11 @@ $(BIN)/chess: $(GUI_SRCS)
 
 textchess: $(TEXT_SRCS)
 	mkdir -p $(BIN)
-	$(CC) $(CFLAGS) -o $(BIN)/textChess $(TEXT_SRCS) -I$(SRC)
+	$(CC) $(CFLAGS) -o $(BIN)/textChess $(TEXT_SRCS) -I$(SRC) -lm
 
 test: $(TEST_SRCS)
 	mkdir -p $(BIN)
-	$(CC) $(CFLAGS) -o $(BIN)/test $(TEST_SRCS) -I$(SRC)
+	$(CC) $(CFLAGS) -o $(BIN)/test $(TEST_SRCS) -I$(SRC) -lm
 	$(BIN)/test
 
 STRATEGY_TEST_SRCS = $(SRC)/strategyTest.c $(SRC)/chess_types.c \
