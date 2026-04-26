@@ -101,6 +101,14 @@ static char statusMsg[128] = "";
 char moveLog[LOG_MAX_ENTRIES][48]; 
 int logCount = 0; 
 
+//return button for menu
+static int returnPressed = 0;
+static int returnBtnX = 0;
+static int returnBtnY = 0;
+static int returnBtnW = 160;
+static int returnBtnH = 50;
+
+
 //picture file names
 static const char *pieceFileNames[2][8] = {
     
@@ -403,15 +411,19 @@ static void renderMenuScreen(const char *title, const char **options, int numOpt
     SDL_RenderPresent(renderer);
 }
 
+
+
 //move Log 
-void addMoveLog(Color color, Move move) {
+void addMoveLog(Color color, Move move, Color humanColor) {
     char entry[48]; 
     const char *colorStr = (color == YELLOW) ? "Yellow" : "Blue"; 
     char fromFile = (char)('A'+move.from.file); 
     char toFile   = (char)('A' + move.to.file);
-    int  fromRank = move.from.rank + 1;
-    int  toRank   = move.to.rank   + 1;
+    int  fromRank = 8 - move.from.rank;
+    int  toRank   = 8 - move.to.rank;
+    
  
+
     snprintf(entry, sizeof(entry), "%s: %c%d -> %c%d",
              colorStr, fromFile, fromRank, toFile, toRank);
  
@@ -539,7 +551,9 @@ static void renderGameScreen(int showClocks)
     }
 
     // draw file labels at the bottom of the board
+  
     for (col = 0; col <= 9; col++) {
+        int file, rank;
         char lbl[2];
 
         if (humanColor == YELLOW) {
@@ -548,6 +562,10 @@ static void renderGameScreen(int showClocks)
             lbl[0] = 'J' - col;
         }
         lbl[1] = '\0';
+        //  to_view_coords(humanColor, col, 0, &file, &rank);
+
+        // lbl[0] = 'A' + file;
+        // lbl[1] = '\0';
 
         drawText(lbl,
                  BOARD_X + col * SQUARE_SIZE + 34,
@@ -557,11 +575,16 @@ static void renderGameScreen(int showClocks)
     }
 
     // draw rank labels on the left of the board
+        
     for (row = 0; row <= 7; row++) {
+        int file, rank;
         char lbl[8];
 
         snprintf(lbl, sizeof(lbl), "%d",
-                 (humanColor == YELLOW) ? (8-row) : (row + 1)); 
+         (humanColor == YELLOW) ? (8-row) : (row + 1));
+
+        // to_view_coords(humanColor, 0, row, &file, &rank);
+        // snprintf(lbl, sizeof(lbl), "%d", rank);
 
         drawText(lbl,
                  BOARD_X - 20,
@@ -633,6 +656,18 @@ static void renderGameScreen(int showClocks)
         drawText("UNDO",
                  undoBtnX + (undoBtnW / 2) - 20, undoBtnY + 12, (SDL_Color){255,255,255,255}, smallFont); 
         yCursor += undoBtnH + 12; 
+
+        // return to main button
+        returnBtnW = contentW;
+        returnBtnH = 44;
+        returnBtnX = contentX;
+        returnBtnY = PANEL_Y + PANEL_H - returnBtnH - 10;
+        fillRect(returnBtnX, returnBtnY, returnBtnW, returnBtnH, 210, 210, 210);
+        drawText("RETURN TO MENU",
+                 returnBtnX + 10,
+                 returnBtnY + 12,
+                 (SDL_Color){0, 0, 0, 255},
+                 smallFont);
 
         //stopping the chain button for the anteater 
         if (currentGameState && currentGameState->anteater_ate) {
@@ -1066,7 +1101,7 @@ Move getMove(GameState *gs)
     hasHighlight = 0;
     pieceMoves.count = 0;
 
-    while (!moveReady && !undoPressed && !stopChainPressed) {
+    while (!moveReady && !undoPressed && !stopChainPressed && !returnPressed) {
         renderGameScreen(1);
 
         while (SDL_PollEvent(&e)) {
@@ -1096,6 +1131,13 @@ Move getMove(GameState *gs)
                     hasHighlight = 0; 
                     snprintf(statusMsg, sizeof(statusMsg), "Chain stopped!"); 
                     break; 
+                }
+
+                if (pointInRect(e.button.x, e.button.y, returnBtnX, returnBtnY, returnBtnW, returnBtnH)) {
+                    returnPressed = 1;
+                    logCount = 0;
+                    snprintf(statusMsg, sizeof(statusMsg), "Returning to menu...");
+                    break;
                 }
 
                 // ignore clicks outside the board
@@ -1212,8 +1254,15 @@ void aiMove(Move move)
     while (frames--) {
         renderGameScreen(1);
         SDL_Delay(50);
-
+        
         while (SDL_PollEvent(&e)) {
+            if (e.type == SDL_MOUSEBUTTONDOWN && e.button.button == SDL_BUTTON_LEFT) {
+                if (pointInRect(e.button.x, e.button.y, returnBtnX, returnBtnY, returnBtnW, returnBtnH)) {
+                    returnPressed = 1;
+                    logCount = 0;
+                    return;
+                }
+            }
         }
     }
 }
@@ -1263,11 +1312,27 @@ void dispUndo(void)
 {
     undoPressed = 1;
 }
-int wasUndoPressed(void)
+
+GuiInput pollGuiInput(void)
 {
-    return undoPressed;
+    GuiInput input;
+
+    input.undo      = undoPressed;
+    input.stopChain = stopChainPressed;
+    input.ret       = returnPressed;
+
+    // resets
+    undoPressed = 0;
+    stopChainPressed = 0;
+    returnPressed = 0;
+
+    return input;
 }
-int wasStopChainPressed(void)
+
+int wasReturnPressed(void)
 {
-    return stopChainPressed;
+    int r = returnPressed;
+    returnPressed = 0;
+    return r;
 }
+
