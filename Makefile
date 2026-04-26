@@ -20,8 +20,8 @@ ifeq ($(UNAME), Darwin)
     CFLAGS      += -I$(SDL2_PREFIX)/include -I$(SDL2_PREFIX)/include/SDL2 -I$(SDL2T_PREFIX)/include -I$(SDL2I_PREFIX)/include
     LIBS         = -L$(SDL2_PREFIX)/lib -L$(SDL2T_PREFIX)/lib -L$(SDL2I_PREFIX)/lib -lSDL2 -lSDL2_ttf -lSDL2_image -lm
 else
-    CFLAGS      += $(shell sdl2-config --cflags)
-    LIBS         = $(shell sdl2-config --libs) -lSDL2_ttf -lSDL2_image -lm
+    CFLAGS      += $(shell pkg-config --cflags sdl2 SDL2_ttf SDL2_image)
+    LIBS         = $(shell pkg-config --libs sdl2 SDL2_ttf SDL2_image) -lm
 endif
 
 all: $(BIN)/chess
