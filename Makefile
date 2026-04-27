@@ -54,13 +54,18 @@ clean:
 	rm -f $(BIN)/chess $(BIN)/textChess $(BIN)/test $(BIN)/strategyTest
 
 tar: $(BIN)/chess
-	tar -czf Chess_Alpha_src.tar.gz \
-	    --exclude='$(BIN)' \
-	    --exclude='*.o' \
-	    --exclude='*.tar.gz' \
-	    --exclude='chess_log.txt' \
-	    README INSTALL COPYRIGHT Makefile src/ doc/
-	tar -czf Chess_Alpha.tar.gz \
-	    README INSTALL COPYRIGHT \
-	    $(BIN)/chess \
-	    doc/Chess_UserManual.pdf
+	rm -rf Chess_V1.0 Chess_V1.0_src
+	mkdir -p Chess_V1.0/bin Chess_V1.0/doc
+	cp README INSTALL COPYRIGHT Chess_V1.0/
+	cp $(BIN)/chess Chess_V1.0/bin/
+	cp -r board_images.bmp Chess_V1.0/
+	cp doc/Chess_UserManual.pdf Chess_V1.0/doc/
+	tar -czf ../Chess_V1.0.tar.gz Chess_V1.0
+	rm -rf Chess_V1.0
+	mkdir -p Chess_V1.0_src/doc Chess_V1.0_src/src
+	cp README INSTALL COPYRIGHT Makefile REFERENCES.txt Chess_V1.0_src/
+	cp -r board_images.bmp Chess_V1.0_src/
+	cp doc/Chess_UserManual.pdf doc/Chess_SoftwareSpec.pdf Chess_V1.0_src/doc/
+	cp src/*.c src/*.h Chess_V1.0_src/src/
+	tar -czf ../Chess_V1.0_src.tar.gz Chess_V1.0_src
+	rm -rf Chess_V1.0_src

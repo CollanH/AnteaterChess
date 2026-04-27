@@ -1,18 +1,30 @@
 INSTALL - Anteater Chess
 
 Requirements:
-  Linux (tested on UCI EECS servers: Bondi, Laguna, Crystalcove, Zuma, Balboa, Doheny)
   GCC 9.0 or later
   GNU Make
-  OpenGL and X11 (pre-installed on UCI servers)
+  SDL2, SDL2_ttf, SDL2_image
+
+Installing SDL2 dependencies:
+  Linux (Ubuntu/Debian):
+    sudo apt-get install libsdl2-dev libsdl2-ttf-dev libsdl2-image-dev
+  Linux (Fedora/RHEL):
+    sudo dnf install SDL2-devel SDL2_ttf-devel SDL2_image-devel
+  macOS (Homebrew):
+    brew install sdl2 sdl2_ttf sdl2_image
+
+SSH / X11 forwarding (required to display the GUI over SSH):
+  Connect with: ssh -X username@server
+  Verify X11 is working: echo $DISPLAY  (should not be empty)
+  On macOS clients, XQuartz must be installed: https://www.xquartz.org
 
 To build from source:
-  tar -xvzf Chess_Alpha_src.tar.gz
-  cd chess
+  tar -xvzf Chess_V1.0_src.tar.gz
+  cd Chess_V1.0_src
   make
 
 To run:
-  bin/chess
+  cd bin && ./chess
 
 To run tests:
   make test
@@ -21,4 +33,4 @@ To clean build files:
   make clean
 
 To uninstall, just delete the directory:
-  rm -rf chess/
+  rm -rf Chess_V1.0_src/
