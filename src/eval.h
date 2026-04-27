@@ -4,6 +4,7 @@
 #include "chess_types.h"
 #include <stdio.h>
 
+#define CONTEMPT 15
 /*CENTIPAWN PIECE WEIGHTS*/
 static const int PIECE_VALUE[8] ={
     0, // EMPTY
