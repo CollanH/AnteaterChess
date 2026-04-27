@@ -1,14 +1,19 @@
-Anteater Chess - Alpha Release
+Anteater Chess - Final Release
 ChessEaters, EECS 22L, UC Irvine
 April 2026
-Version 1.0 (Alpha)
+Version 1.0
 
 Authors: Collan Harrington, Claire Nguyen, Jordan Le, Tara Pai, Yanilette Montano, Aurea Jolly
 
 Anteater Chess is a modified version of chess played on a 10x8 board with two extra
-pieces called Anteaters. The goal is to checkmate the opponent's king. The program
-supports user vs user, user vs AI, and AI vs AI matchups with a chess clock and
-difficulty selection.
+pieces called Anteaters. The goal is to checkmate the opponent's king.
+
+Extra features:
+  - Three AI difficulty levels: Easy, Medium, Hard
+  - Human vs Human mode
+  - Computer vs Computer (AI vs AI) mode
+  - Chess clock (per-player timer)
+  - Undo last move button
 
 To install, type "make". For detailed instructions see INSTALL.
 For how to play, refer to doc/Chess_UserManual.pdf.

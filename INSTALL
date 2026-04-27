@@ -1,18 +1,46 @@
 INSTALL - Anteater Chess
 
+=== User Package (Chess_V1.0.tar.gz) ===
+
+No installation required. A pre-compiled Linux binary is included.
+
+1. Unpack:
+     tar -xvzf Chess_V1.0.tar.gz
+
+2. Run:
+     cd Chess_V1.0/bin
+     ./chess
+
+Note: If running over SSH, X11 forwarding is required to display the GUI:
+  Connect with: ssh -X username@server
+  On macOS clients, XQuartz must be installed: https://www.xquartz.org
+
+
+=== Source Package (Chess_V1.0_src.tar.gz) ===
+
 Requirements:
-  Linux (tested on UCI EECS servers: Bondi, Laguna, Crystalcove, Zuma, Balboa, Doheny)
   GCC 9.0 or later
   GNU Make
-  OpenGL and X11 (pre-installed on UCI servers)
+  SDL2, SDL2_ttf, SDL2_image
 
-To build from source:
-  tar -xvzf Chess_Alpha_src.tar.gz
-  cd chess
-  make
+Installing SDL2 dependencies:
+  Linux (Ubuntu/Debian):
+    sudo apt-get install libsdl2-dev libsdl2-ttf-dev libsdl2-image-dev
+  Linux (Fedora/RHEL):
+    sudo dnf install SDL2-devel SDL2_ttf-devel SDL2_image-devel
+  macOS (Homebrew):
+    brew install sdl2 sdl2_ttf sdl2_image
 
-To run:
-  bin/chess
+1. Unpack:
+     tar -xvzf Chess_V1.0_src.tar.gz
+
+2. Build:
+     cd Chess_V1.0_src
+     make
+
+3. Run:
+     cd bin
+     ./chess
 
 To run tests:
   make test
@@ -20,5 +48,5 @@ To run tests:
 To clean build files:
   make clean
 
-To uninstall, just delete the directory:
-  rm -rf chess/
+To uninstall, delete the directory:
+  rm -rf Chess_V1.0_src/
