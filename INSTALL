@@ -1,5 +1,23 @@
 INSTALL - Anteater Chess
 
+=== User Package (Chess_V1.0.tar.gz) ===
+
+No installation required. A pre-compiled Linux binary is included.
+
+1. Unpack:
+     tar -xvzf Chess_V1.0.tar.gz
+
+2. Run:
+     cd Chess_V1.0/bin
+     ./chess
+
+Note: If running over SSH, X11 forwarding is required to display the GUI:
+  Connect with: ssh -X username@server
+  On macOS clients, XQuartz must be installed: https://www.xquartz.org
+
+
+=== Source Package (Chess_V1.0_src.tar.gz) ===
+
 Requirements:
   GCC 9.0 or later
   GNU Make
@@ -13,18 +31,16 @@ Installing SDL2 dependencies:
   macOS (Homebrew):
     brew install sdl2 sdl2_ttf sdl2_image
 
-SSH / X11 forwarding (required to display the GUI over SSH):
-  Connect with: ssh -X username@server
-  Verify X11 is working: echo $DISPLAY  (should not be empty)
-  On macOS clients, XQuartz must be installed: https://www.xquartz.org
+1. Unpack:
+     tar -xvzf Chess_V1.0_src.tar.gz
 
-To build from source:
-  tar -xvzf Chess_V1.0_src.tar.gz
-  cd Chess_V1.0_src
-  make
+2. Build:
+     cd Chess_V1.0_src
+     make
 
-To run:
-  cd bin && ./chess
+3. Run:
+     cd bin
+     ./chess
 
 To run tests:
   make test
@@ -32,5 +48,5 @@ To run tests:
 To clean build files:
   make clean
 
-To uninstall, just delete the directory:
+To uninstall, delete the directory:
   rm -rf Chess_V1.0_src/
