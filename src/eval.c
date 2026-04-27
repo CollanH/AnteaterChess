@@ -1,6 +1,7 @@
 #include "eval.h"
 #include "chess_types.h"
 #include <stdlib.h>
+//#include "stdio.h" for testing & debugging
 
 /*HELPER FUNCTIONS DECLARATIONS*/
 int isClear(GameState *gs, int fa, int ra, int fb, int rb);
@@ -67,8 +68,12 @@ int evalMobility(GameState *gs){
             if(piece.piecetype == EMPTY) continue;
             if(piece.piecetype == ANT) continue; // ant handled in evalPawnStructure
             if(piece.piecetype == KING) continue; // king handled in evalKingSafety
-    
+
+            int phase = getGamePhase(gs);
             int weight = MOB_WEIGHTS[piece.piecetype];
+
+            if(piece.piecetype == QUEEN && phase >= 20) weight = 3;
+
             int mobilityCount = 0;
             int df, dr;
 
@@ -82,7 +87,8 @@ int evalMobility(GameState *gs){
                     int possible = 1;
                     switch(piece.piecetype){
                         case KNIGHT:
-                            possible = (abs(df)==2 && abs(dr)==1) || (abs(df)==1 && abs(dr)==2);
+                            possible = ((abs(df)==2 && abs(dr)==1) ||
+                                        (abs(df)==1 && abs(dr)==2));
                             break;
                         case BISHOP:
                             possible = (abs(df) == abs(dr));
@@ -387,6 +393,8 @@ int evalTempo(GameState *gs){
             if(p.piecetype == KING) continue;
             if(p.piecetype == EMPTY) continue;
             if(p.piecetype == ANT) continue;
+            if(p.piecetype == QUEEN) continue;
+            if(p.piecetype == ROOK) continue;
 
             int inEnemyHalf = 0;
 
@@ -594,6 +602,8 @@ int evaluate(GameState *gs){
 
     score = material + pst + mobility + king + pawn + anteater + kingTropism + kingEscape + backRank + tempo + development;
     //printf("TOTAL: %d\n", score); fflush(stdout);
+
+    score -= CONTEMPT;
 
     return score;
 }
