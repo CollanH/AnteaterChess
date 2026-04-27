@@ -63,7 +63,7 @@ tar: $(BIN)/chess
 	tar -czf ../Chess_V1.0.tar.gz Chess_V1.0
 	rm -rf Chess_V1.0
 	mkdir -p Chess_V1.0_src/doc Chess_V1.0_src/src
-	cp README INSTALL COPYRIGHT Makefile REFERENCES.txt Chess_V1.0_src/
+	cp README INSTALL COPYRIGHT Makefile Chess_V1.0_src/
 	cp -r board_images.bmp Chess_V1.0_src/
 	cp doc/Chess_UserManual.pdf doc/Chess_SoftwareSpec.pdf Chess_V1.0_src/doc/
 	cp src/*.c src/*.h Chess_V1.0_src/src/
