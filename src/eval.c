@@ -10,6 +10,7 @@ int KingDangerScore(GameState *gs, Color side);
 int shieldPenalty(GameState *gs, Color side);
 int evalPassedAnts(GameState *gs, Color side);
 int evalTempo(GameState *gs);
+int evalDevelopment(GameState *gs, int phase);
 
 
 int canAttackSquare(GameState *gs, int fa, int ra, int fb, int rb){
@@ -313,6 +314,69 @@ int evalKingTropism(GameState *gs){
     return score;
 }
 
+int evalDevelopment(GameState *gs, int phase){
+    int score           = 0;
+    int r;
+    int f;
+    int sideUndeveloped = 0;
+    int oppUndeveloped  = 0;
+    int sideQueenOnBack = 1;
+    int oppQueenOnBack  = 1;
+    int sideQueenRank   = -1;
+    int oppQueenRank    = -1;
+    Color side          = gs->turn;
+    Color opp           = getOpponent(side);
+    int sideBackRank    = (side == YELLOW) ? 7 : 0;
+    int oppBackRank     = (opp  == YELLOW) ? 7 : 0;
+    int sideEnemyHalf   = (side == YELLOW) ? 3 : 4;
+    int oppEnemyHalf    = (opp  == YELLOW) ? 3 : 4;
+
+    for (f = 0; f < 10; f++)
+    {
+        Piece sp = gs->board[sideBackRank][f];
+        Piece op = gs->board[oppBackRank][f];
+
+        if (sp.color == side && (sp.piecetype == KNIGHT || sp.piecetype == BISHOP))
+            sideUndeveloped++;
+        if (op.color == opp  && (op.piecetype == KNIGHT || op.piecetype == BISHOP))
+            oppUndeveloped++;
+        if (sp.color == side && sp.piecetype == QUEEN) sideQueenOnBack = 1;
+        if (op.color == opp  && op.piecetype == QUEEN) oppQueenOnBack  = 1;
+    }
+
+    //find queen positions to check if crossed into enemy half
+    for (r = 0; r < 8; r++)
+    {
+        for (f = 0; f < 10; f++)
+        {
+            Piece p = gs->board[r][f];
+            if (p.piecetype == QUEEN && p.color == side) { sideQueenRank = r; sideQueenOnBack = (r == sideBackRank); }
+            if (p.piecetype == QUEEN && p.color == opp)  { oppQueenRank  = r; oppQueenOnBack  = (r == oppBackRank);  }
+        }
+    }
+
+    //base penalty: queen off back rank while minor pieces still home
+    if (!sideQueenOnBack && sideUndeveloped > 0)
+        score -= sideUndeveloped * 40;
+    if (!oppQueenOnBack  && oppUndeveloped  > 0)
+        score += oppUndeveloped  * 40;
+
+    //extra penalty: queen crossed into opponent's half before developing minors (Qd5 type moves)
+    if (sideQueenRank != -1 && sideUndeveloped > 0)
+    {
+        int crossed = (side == YELLOW) ? (sideQueenRank <= sideEnemyHalf) : (sideQueenRank >= sideEnemyHalf);
+        if (crossed) score -= sideUndeveloped * 25;
+    }
+    if (oppQueenRank != -1 && oppUndeveloped > 0)
+    {
+        int crossed = (opp == YELLOW) ? (oppQueenRank <= oppEnemyHalf) : (oppQueenRank >= oppEnemyHalf);
+        if (crossed) score += oppUndeveloped * 25;
+    }
+
+    //scale by phase: full penalty in the opening, fades to zero in the endgame
+    return (score * phase) / PHASE_MAX;
+}
+
 int evalTempo(GameState *gs){
     int score = 0; 
     Color side = gs->turn;
@@ -525,8 +589,10 @@ int evaluate(GameState *gs){
     int tempo = evalTempo(gs);
     //print("Tempo: %d\n", tempo); flush(stdout);
 
+    int development = evalDevelopment(gs, phase);
+    //printf("Development: %d\n", development); fflush(stdout);
 
-    score = material + pst + mobility + king + pawn + anteater + kingTropism + kingEscape + backRank + tempo;
+    score = material + pst + mobility + king + pawn + anteater + kingTropism + kingEscape + backRank + tempo + development;
     //printf("TOTAL: %d\n", score); fflush(stdout);
 
     return score;
