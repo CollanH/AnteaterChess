@@ -1,6 +1,7 @@
 #include "strategy.h"
 #include <stdio.h>
 #include <stdint.h>
+#include <string.h>
 #include "eval.h"
 #include <stdlib.h>
 #include <time.h>
@@ -8,89 +9,99 @@
 //not exported in legalMoveGen.h but needed here
 bool inCheck(const GameState *gs, Color color);
 
-//checkmate score and search time limit
-#define INF             1000000
-#define TIME_LIMIT_SECS 3
+#define INF            1000000
+#define TIME_LIMIT_SECS 8
 
-//transposition table size and entry flag values
-#define TT_SIZE  (1 << 20)
-#define TT_MASK  (TT_SIZE - 1)
-#define TT_EXACT 0
-#define TT_ALPHA 1
-#define TT_BETA  2
+//transpo table size and flag values
+#define TRANSPO_SIZE  (1 << 20)
+#define TRANSPO_MASK  (TRANSPO_SIZE - 1)
+#define TRANSPO_EXACT 0
+#define TRANSPO_ALPHA 1
+#define TRANSPO_BETA  2
 
-//one cached position in the transposition table
+//one cached position
 typedef struct
 {
     uint64_t key;
     int      score;
     int      depth;
     int      flag;
-} TTEntry;
+    Move     bestMove;
+} TranspoEntry;
 
 //function declarations
 int      negamax(GameState *gs, int depth, int alpha, int beta, int ply);
-int      quiesce(GameState *gs, int alpha, int beta, int qdepth);
-bool     time_up(void);
+int      quiesce(GameState *gs, int alpha, int beta, int qDepth);
+bool     timeUp(void);
 uint64_t rand64(void);
-void     zobrist_init(void);
-uint64_t compute_hash(const GameState *gs);
-bool     tt_probe(uint64_t key, int depth, int alpha, int beta, int *score);
-void     tt_store(uint64_t key, int depth, int score, int flag);
-int      score_move(const GameState *gs, Move m);
-void     sort_moves(const GameState *gs, MoveList *moves);
+void     zobristInit(void);
+uint64_t computeHash(const GameState *gs);
+bool     transpoProbe(uint64_t key, int depth, int alpha, int beta, int *score);
+void     transpoStore(uint64_t key, int depth, int score, int flag, Move bestMove);
+int      transpoGetBestMove(uint64_t key, Move *out);
+int      movesEqual(Move a, Move b);
+void     updateKiller(int ply, Move move);
+int      scoreMove(const GameState *gs, Move m, int ply);
+void     sortMoves(const GameState *gs, MoveList *moves, int ply);
+GameState apply_move(const GameState *gs, Move move);
 
 //search state
-clock_t search_start_time;
-bool    search_aborted;
-int     node_count;
+clock_t searchStartTime;
+bool    searchAborted;
+int     nodeCount;
 
-//one random 64-bit key per (rank, file, piece type, color) combo
-uint64_t zob_piece[8][10][8][2];
-uint64_t zob_side;
-uint64_t zob_seed;  //xorshift64* state, must be non-zero before first rand64() call
-bool     zob_ready;
+//two quiet beta-cutoff moves per ply
+#define MAX_KILLER_PLY 32
+Move killerMoves[MAX_KILLER_PLY][2];
 
-//the transposition table
-TTEntry tt[TT_SIZE];
+//tracks how often quiet moves caused beta cutoffs - deeper cutoffs count more
+int historyTable[8][10][8][10];
+
+//one random key per (rank, file, piecetype, color) combo
+uint64_t zobPiece[8][10][8][2];
+uint64_t zobSide;
+uint64_t zobSeed;
+bool     zobReady;
+
+//the transpo table
+TranspoEntry transpoTable[TRANSPO_SIZE];
 
 //checks time limit, only reads clock every 2048 nodes to reduce overhead
-bool time_up(void)
+bool timeUp(void)
 {
     double elapsed;
 
-    if (node_count++ & 2047)
+    if (nodeCount++ & 2047)
     {
         return false;
     }
-    elapsed = (double)(clock() - search_start_time) / CLOCKS_PER_SEC;
+    elapsed = (double)(clock() - searchStartTime) / CLOCKS_PER_SEC;
     return elapsed >= TIME_LIMIT_SECS;
 }
 
-//xorshift64* — shifts bits in three directions then multiplies to spread entropy
-//full algorithm and shift constants from Vigna's paper (see REFERENCES.txt section 8)
+//xorshift64* - three shift-xors then multiply to spread entropy across all 64 bits
 uint64_t rand64(void)
 {
-    zob_seed ^= zob_seed >> 12;
-    zob_seed ^= zob_seed << 25;
-    zob_seed ^= zob_seed >> 27;
-    return zob_seed * 0x2545F4914F6CDD1DULL;
+    zobSeed ^= zobSeed >> 12;
+    zobSeed ^= zobSeed << 25;
+    zobSeed ^= zobSeed >> 27;
+    return zobSeed * 0x2545F4914F6CDD1DULL;
 }
 
-//fills zobrist table with random keys before the first search
-void zobrist_init(void)
+//fills zobrist table with random keys before first search
+void zobristInit(void)
 {
     int rank;
     int file;
     int piecetype;
     int color;
 
-    //seed xorshift64* with time so keys differ each run
+    //seeding with time so keys differ each run
     srand((unsigned)time(NULL));
-    zob_seed = ((uint64_t)rand() << 32) | (uint64_t)rand();
-    if (zob_seed == 0)
+    zobSeed = ((uint64_t)rand() << 32) | (uint64_t)rand();
+    if (zobSeed == 0)
     {
-        zob_seed = 1;
+        zobSeed = 1;
     }
 
     for (rank = 0; rank < 8; rank++)
@@ -101,63 +112,63 @@ void zobrist_init(void)
             {
                 for (color = 0; color < 2; color++)
                 {
-                    zob_piece[rank][file][piecetype][color] = rand64();
+                    zobPiece[rank][file][piecetype][color] = rand64();
                 }
             }
         }
     }
-    zob_side  = rand64();
-    zob_ready = true;
+    zobSide  = rand64();
+    zobReady = true;
 }
 
 //XORs a key for every piece on the board to produce a unique position fingerprint
-uint64_t compute_hash(const GameState *gs)
+uint64_t computeHash(const GameState *gs)
 {
     uint64_t hash;
     int      rank;
     int      file;
-    Piece    square_piece;
+    Piece    squarePiece;
 
     hash = 0;
     for (rank = 0; rank < 8; rank++)
     {
         for (file = 0; file < 10; file++)
         {
-            square_piece = gs->board[rank][file];
-            if (square_piece.piecetype != EMPTY)
+            squarePiece = gs->board[rank][file];
+            if (squarePiece.piecetype != EMPTY)
             {
-                hash ^= zob_piece[rank][file][square_piece.piecetype][square_piece.color];
+                hash ^= zobPiece[rank][file][squarePiece.piecetype][squarePiece.color];
             }
         }
     }
     if (gs->turn == BLUE)
     {
-        hash ^= zob_side;
+        hash ^= zobSide;
     }
     return hash;
 }
 
-//looks up position in transposition table, returns true if a usable result is found
-bool tt_probe(uint64_t key, int depth, int alpha, int beta, int *score)
+//looks up position in transpo table, returns true if a usable result is found
+bool transpoProbe(uint64_t key, int depth, int alpha, int beta, int *score)
 {
-    TTEntry *e;
+    TranspoEntry *e;
 
-    e = &tt[key & TT_MASK];
+    e = &transpoTable[key & TRANSPO_MASK];
     if (e->key != key || e->depth < depth)
     {
         return false;
     }
-    if (e->flag == TT_EXACT)
+    if (e->flag == TRANSPO_EXACT)
     {
         *score = e->score;
         return true;
     }
-    if (e->flag == TT_ALPHA && e->score <= alpha)
+    if (e->flag == TRANSPO_ALPHA && e->score <= alpha)
     {
         *score = alpha;
         return true;
     }
-    if (e->flag == TT_BETA && e->score >= beta)
+    if (e->flag == TRANSPO_BETA && e->score >= beta)
     {
         *score = beta;
         return true;
@@ -165,28 +176,64 @@ bool tt_probe(uint64_t key, int depth, int alpha, int beta, int *score)
     return false;
 }
 
-//stores a search result in the transposition table
-void tt_store(uint64_t key, int depth, int score, int flag)
+//stores a search result - keeps deeper entries since they have more info
+void transpoStore(uint64_t key, int depth, int score, int flag, Move bestMove)
 {
-    TTEntry *e;
+    TranspoEntry *e;
 
-    e = &tt[key & TT_MASK];
-    //keep deeper entries, they contain more information
+    e = &transpoTable[key & TRANSPO_MASK];
     if (e->key == key && e->depth > depth)
     {
         return;
     }
-    e->key   = key;
-    e->depth = depth;
-    e->score = score;
-    e->flag  = flag;
+    e->key      = key;
+    e->depth    = depth;
+    e->score    = score;
+    e->flag     = flag;
+    e->bestMove = bestMove;
 }
 
-//scores a capture: big victim taken by small attacker scores highest (MVV-LVA)
-int score_move(const GameState *gs, Move m)
+//fills out with the stored best move for this position, returns 1 if found
+int transpoGetBestMove(uint64_t key, Move *out)
+{
+    TranspoEntry *e;
+
+    e = &transpoTable[key & TRANSPO_MASK];
+    if (e->key != key)
+    {
+        return 0;
+    }
+    *out = e->bestMove;
+    return 1;
+}
+
+//comparing from and to squares of two moves
+int movesEqual(Move a, Move b)
+{
+    return a.from.rank == b.from.rank && a.from.file == b.from.file &&
+           a.to.rank   == b.to.rank   && a.to.file   == b.to.file;
+}
+
+//stores a quiet beta-cutoff move as a killer, shifting old killer to slot 1
+void updateKiller(int ply, Move move)
+{
+    if (ply >= MAX_KILLER_PLY)
+    {
+        return;
+    }
+    if (!movesEqual(killerMoves[ply][0], move))
+    {
+        killerMoves[ply][1] = killerMoves[ply][0];
+        killerMoves[ply][0] = move;
+    }
+}
+
+//scores a move for ordering - captures use MVV-LVA, killers score just below min capture, quiet moves score 0
+int scoreMove(const GameState *gs, Move m, int ply)
 {
     PieceType victim;
     PieceType attacker;
+    int       h;
 
     victim   = gs->board[m.to.rank  ][m.to.file  ].piecetype;
     attacker = gs->board[m.from.rank][m.from.file].piecetype;
@@ -194,11 +241,24 @@ int score_move(const GameState *gs, Move m)
     {
         return PIECE_VALUE[victim] * 10 - PIECE_VALUE[attacker];
     }
+    //checking killer slots before falling back to history
+    if (ply < MAX_KILLER_PLY)
+    {
+        if (movesEqual(m, killerMoves[ply][0])) return 90;
+        if (movesEqual(m, killerMoves[ply][1])) return 80;
+    }
+    // penalize queen moves early - searched last so eval penalty has more effect
+    if(attacker == QUEEN){
+        return -100;
+    }
+    //history score capped at 70 so it stays below killers
+    h = historyTable[m.from.rank][m.from.file][m.to.rank][m.to.file];
+    if (h > 0) return (h > 70) ? 70 : h;
     return 0;
 }
 
-//sorts moves so captures come first, quiet moves last
-void sort_moves(const GameState *gs, MoveList *moves)
+//insertion sort descending by score - captures first, then killers, then quiet moves
+void sortMoves(const GameState *gs, MoveList *moves, int ply)
 {
     int  scores[250];
     int  i;
@@ -208,7 +268,7 @@ void sort_moves(const GameState *gs, MoveList *moves)
 
     for (i = 0; i < moves->count; i++)
     {
-        scores[i] = score_move(gs, moves->moves[i]);
+        scores[i] = scoreMove(gs, moves->moves[i], ply);
     }
 
     for (i = 1; i < moves->count; i++)
@@ -227,54 +287,67 @@ void sort_moves(const GameState *gs, MoveList *moves)
     }
 }
 
-//searches captures only at leaf nodes to avoid stopping in the middle of an exchange
-int quiesce(GameState *gs, int alpha, int beta, int qdepth)
+//returns board state after a move without modifying the original - used by textui
+GameState apply_move(const GameState *gs, Move move)
 {
-    int      stand_pat;
+    GameState nextState;
+    UndoData  undo;
+
+    nextState            = *gs;
+    nextState.prev_state = NULL;
+    make_move_in_place(&nextState, move, &undo);
+
+    return nextState;
+}
+
+//searches captures only at leaf nodes to avoid stopping in the middle of an exchange
+int quiesce(GameState *gs, int alpha, int beta, int qDepth)
+{
+    int      standPat;
     int      score;
     int      i;
     MoveList moves;
     UndoData undo;
 
-    if (search_aborted)
+    if (searchAborted)
     {
         return 0;
     }
-    if (time_up())
+    if (timeUp())
     {
-        search_aborted = true;
+        searchAborted = true;
         return 0;
     }
 
-    //score position as-is, if already good enough stop here
-    stand_pat = evaluate(gs);
+    //scoring position as-is, if already good enough stop here
+    standPat = evaluate(gs);
 
-    if (stand_pat >= beta)
+    if (standPat >= beta)
     {
         return beta;
     }
-    if (stand_pat > alpha)
+    if (standPat > alpha)
     {
-        alpha = stand_pat;
+        alpha = standPat;
     }
-    if (qdepth == 0)
+    if (qDepth == 0)
     {
         return alpha;
     }
 
     moves = legalMoveGen(gs);
-    sort_moves(gs, &moves);
+    sortMoves(gs, &moves, MAX_KILLER_PLY);
 
     for (i = 0; i < moves.count; i++)
     {
-        //skip non-captures
+        //skipping non-captures
         if (gs->board[moves.moves[i].to.rank][moves.moves[i].to.file].piecetype == EMPTY)
         {
             continue;
         }
 
         make_move_in_place(gs, moves.moves[i], &undo);
-        score = -quiesce(gs, -beta, -alpha, qdepth - 1);
+        score = -quiesce(gs, -beta, -alpha, qDepth - 1);
         undo_move_in_place(gs, moves.moves[i], &undo);
 
         if (score >= beta)
@@ -290,49 +363,39 @@ int quiesce(GameState *gs, int alpha, int beta, int qdepth)
     return alpha;
 }
 
-//returns board state after a move without modifying the original
-GameState apply_move(const GameState *gs, Move move)
-{
-    GameState nextState;
-    UndoData  undo;
-
-    nextState            = *gs;
-    nextState.prev_state = NULL;
-    make_move_in_place(&nextState, move, &undo);
-
-    return nextState;
-}
-
-//recursive search — score from the perspective of whoever is moving
-//positive = winning, negative = losing
-//ply = distance from root, used to prefer shorter mates over longer ones
+//recursive negamax search with alpha-beta pruning
+//score is from the perspective of whoever is moving - positive means winning
+//ply = distance from root, used to prefer shorter mates
 int negamax(GameState *gs, int depth, int alpha, int beta, int ply)
 {
     uint64_t key;
-    int      tt_score;
+    int      transpoScore;
     MoveList moves;
     int      best;
     int      i;
     int      score;
     int      flag;
-    Color    side_to_move;
+    Color    sideToMove;
     UndoData undo;
+    Move     transpoMove;
+    int      transpoMoveFound;
+    Move     bestMoveLocal;
 
-    if (search_aborted)
+    if (searchAborted)
     {
         return 0;
     }
-    if (time_up())
+    if (timeUp())
     {
-        search_aborted = true;
+        searchAborted = true;
         return 0;
     }
 
-    //check if this position was already searched at this depth
-    key = compute_hash(gs);
-    if (tt_probe(key, depth, alpha, beta, &tt_score))
+    //checking if this position was already searched at this depth
+    key = computeHash(gs);
+    if (transpoProbe(key, depth, alpha, beta, &transpoScore))
     {
-        return tt_score;
+        return transpoScore;
     }
 
     if (depth == 0)
@@ -341,7 +404,7 @@ int negamax(GameState *gs, int depth, int alpha, int beta, int ply)
     }
 
     moves = legalMoveGen(gs);
-    sort_moves(gs, &moves);
+    sortMoves(gs, &moves, ply);
 
     if (moves.count == 0)
     {
@@ -353,7 +416,24 @@ int negamax(GameState *gs, int depth, int alpha, int beta, int ply)
         return 0;
     }
 
-    //null move pruning: passing the turn still beats beta, so prune
+    //swapping the transpo best move to index 0 so it gets searched first
+    transpoMoveFound = transpoGetBestMove(key, &transpoMove);
+    if (transpoMoveFound)
+    {
+        for (i = 0; i < moves.count; i++)
+        {
+            if (movesEqual(moves.moves[i], transpoMove))
+            {
+                Move tmp       = moves.moves[0];
+                moves.moves[0] = moves.moves[i];
+                moves.moves[i] = tmp;
+                break;
+            }
+        }
+    }
+    bestMoveLocal = moves.moves[0];
+
+    //null move pruning - passing the turn still beats beta so prune
     if (depth >= 3 && !inCheck(gs, gs->turn))
     {
         if (gs->turn == YELLOW)
@@ -380,21 +460,52 @@ int negamax(GameState *gs, int depth, int alpha, int beta, int ply)
     }
 
     best = -(INF - ply);
-    flag = TT_ALPHA;
+    flag = TRANSPO_ALPHA;
 
     for (i = 0; i < moves.count; i++)
     {
-        side_to_move = gs->turn;
+        int reduction;
+        int isCapture;
+        int isKiller;
+        int h;
+
+        sideToMove = gs->turn;
+        isCapture  = gs->board[moves.moves[i].to.rank][moves.moves[i].to.file].piecetype != EMPTY;
+
+        //late move reductions - quiet moves searched late are likely bad, search them shallower
+        //killers and high-history moves are exempt since they have evidence of being strong
+        //if reduced score still raises alpha, re-search at full depth to confirm
+        reduction = 0;
+        if (depth >= 3 && i >= 3 && !isCapture && !inCheck(gs, gs->turn))
+        {
+            isKiller = (ply < MAX_KILLER_PLY &&
+                       (movesEqual(moves.moves[i], killerMoves[ply][0]) ||
+                        movesEqual(moves.moves[i], killerMoves[ply][1])));
+            h = historyTable[moves.moves[i].from.rank][moves.moves[i].from.file]
+                            [moves.moves[i].to.rank  ][moves.moves[i].to.file  ];
+            if (!isKiller && h < 50)
+            {
+                reduction = (i >= 6) ? 2 : 1;
+            }
+        }
 
         make_move_in_place(gs, moves.moves[i], &undo);
 
-        if (gs->turn == side_to_move)
+        if (gs->turn == sideToMove)
         {
-            score = negamax(gs, depth - 1, alpha, beta, ply + 1);
+            score = negamax(gs, depth - 1 - reduction, alpha, beta, ply + 1);
+            if (reduction > 0 && score > alpha)
+            {
+                score = negamax(gs, depth - 1, alpha, beta, ply + 1);
+            }
         }
         else
         {
-            score = -negamax(gs, depth - 1, -beta, -alpha, ply + 1);
+            score = -negamax(gs, depth - 1 - reduction, -beta, -alpha, ply + 1);
+            if (reduction > 0 && score > alpha)
+            {
+                score = -negamax(gs, depth - 1, -beta, -alpha, ply + 1);
+            }
         }
 
         undo_move_in_place(gs, moves.moves[i], &undo);
@@ -405,60 +516,70 @@ int negamax(GameState *gs, int depth, int alpha, int beta, int ply)
         }
         if (score > alpha)
         {
-            alpha = score;
-            flag  = TT_EXACT;
+            alpha         = score;
+            flag          = TRANSPO_EXACT;
+            bestMoveLocal = moves.moves[i];
         }
         if (alpha >= beta)
         {
-            tt_store(key, depth, best, TT_BETA);
+            if (gs->board[moves.moves[i].to.rank][moves.moves[i].to.file].piecetype == EMPTY)
+            {
+                //quiet cutoff - store as killer and bump history so this move sorts higher next time
+                updateKiller(ply, moves.moves[i]);
+                historyTable[moves.moves[i].from.rank][moves.moves[i].from.file]
+                            [moves.moves[i].to.rank  ][moves.moves[i].to.file  ] += depth * depth;
+            }
+            transpoStore(key, depth, best, TRANSPO_BETA, bestMoveLocal);
             return best;
         }
     }
 
-    tt_store(key, depth, best, flag);
+    transpoStore(key, depth, best, flag, bestMoveLocal);
     return best;
 }
 
 Move* SelectBestMove(GameState *gs, Color color, int depth)
 {
-    static Move best_move;
-    Move        best_at_depth;
+    static Move bestMove;
+    Move        bestAtDepth;
     MoveList    moves;
-    int         best_score_at_depth;
+    int         bestScoreAtDepth;
     int         alpha;
     int         beta;
     int         i;
-    int         current_depth;
+    int         currentDepth;
     int         score;
     clock_t     start;
     double      elapsed;
-    Color       side_to_move;
+    Color       sideToMove;
     UndoData    undo;
 
     (void)color;
 
-    if (!zob_ready)
+    if (!zobReady)
     {
-        zobrist_init();
+        zobristInit();
     }
 
-    search_start_time = clock();
-    search_aborted    = false;
-    node_count        = 0;
-    start             = search_start_time;
+    searchStartTime = clock();
+    searchAborted   = false;
+    nodeCount       = 0;
+    start           = searchStartTime;
+    memset(killerMoves,  0, sizeof(killerMoves));
+    memset(historyTable, 0, sizeof(historyTable));
 
     moves = legalMoveGen(gs);
-    sort_moves(gs, &moves);
+    sortMoves(gs, &moves, 0);
 
     if (moves.count == 0)
     {
         return NULL;
     }
 
-    best_move = moves.moves[0];
+    bestMove = moves.moves[0];
 
-    //search depth 2, then 4, then 6... stopping when time runs out
-    for (current_depth = 2; current_depth <= depth; current_depth += 2)
+    //searching depth 2, then 4, then 6... stopping when time runs out
+    for (currentDepth = 2; currentDepth <= depth; currentDepth += 2)
     {
         elapsed = (double)(clock() - start) / CLOCKS_PER_SEC;
         if (elapsed >= TIME_LIMIT_SECS)
@@ -466,37 +587,37 @@ Move* SelectBestMove(GameState *gs, Color color, int depth)
             break;
         }
 
-        best_at_depth       = best_move;
-        best_score_at_depth = -INF;
-        alpha               = -INF;
-        beta                = INF;
+        bestAtDepth      = bestMove;
+        bestScoreAtDepth = -INF;
+        alpha            = -INF;
+        beta             = INF;
 
         for (i = 0; i < moves.count; i++)
         {
-            side_to_move = gs->turn;
+            sideToMove = gs->turn;
 
             make_move_in_place(gs, moves.moves[i], &undo);
 
-            if (gs->turn == side_to_move)
+            if (gs->turn == sideToMove)
             {
-                score = negamax(gs, current_depth - 1, alpha, beta, 1);
+                score = negamax(gs, currentDepth - 1, alpha, beta, 1);
             }
             else
             {
-                score = -negamax(gs, current_depth - 1, -beta, -alpha, 1);
+                score = -negamax(gs, currentDepth - 1, -beta, -alpha, 1);
             }
 
             undo_move_in_place(gs, moves.moves[i], &undo);
 
-            if (search_aborted)
+            if (searchAborted)
             {
                 break;
             }
 
-            if (i == 0 || score > best_score_at_depth)
+            if (i == 0 || score > bestScoreAtDepth)
             {
-                best_score_at_depth = score;
-                best_at_depth       = moves.moves[i];
+                bestScoreAtDepth = score;
+                bestAtDepth      = moves.moves[i];
             }
 
             if (score > alpha)
@@ -505,9 +626,16 @@ Move* SelectBestMove(GameState *gs, Color color, int depth)
             }
         }
 
-        if (!search_aborted)
+        if (!searchAborted)
         {
-            best_move = best_at_depth;
+            bestMove = bestAtDepth;
+            elapsed  = (double)(clock() - start) / CLOCKS_PER_SEC;
+            printf("depth %d done in %.2fs  best: %c%d -> %c%d\n",
+                   currentDepth,
+                   elapsed,
+                   'A' + bestAtDepth.from.file, bestAtDepth.from.rank + 1,
+                   'A' + bestAtDepth.to.file,   bestAtDepth.to.rank   + 1);
+            fflush(stdout);
         }
         else
         {
@@ -515,5 +643,5 @@ Move* SelectBestMove(GameState *gs, Color color, int depth)
         }
     }
 
-    return &best_move;
+    return &bestMove;
 }
