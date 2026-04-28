@@ -10,7 +10,7 @@
 bool inCheck(const GameState *gs, Color color);
 
 #define INF            1000000
-#define TIME_LIMIT_SECS 8
+#define TIME_LIMIT_SECS 9
 
 //transpo table size and flag values
 #define TRANSPO_SIZE  (1 << 20)
@@ -433,8 +433,11 @@ int negamax(GameState *gs, int depth, int alpha, int beta, int ply)
     }
     bestMoveLocal = moves.moves[0];
 
+    //computing check status once so we dont call inCheck inside the move loop
+    int inCheckNow = inCheck(gs, gs->turn);
+
     //null move pruning - passing the turn still beats beta so prune
-    if (depth >= 3 && !inCheck(gs, gs->turn))
+    if (depth >= 3 && !inCheckNow)
     {
         if (gs->turn == YELLOW)
         {
@@ -444,7 +447,7 @@ int negamax(GameState *gs, int depth, int alpha, int beta, int ply)
         {
             gs->turn = YELLOW;
         }
-        score = -negamax(gs, depth - 3, -beta, -beta + 1, ply + 1);
+        score = -negamax(gs, depth - 2, -beta, -beta + 1, ply + 1);
         if (gs->turn == YELLOW)
         {
             gs->turn = BLUE;
@@ -476,7 +479,7 @@ int negamax(GameState *gs, int depth, int alpha, int beta, int ply)
         //killers and high-history moves are exempt since they have evidence of being strong
         //if reduced score still raises alpha, re-search at full depth to confirm
         reduction = 0;
-        if (depth >= 3 && i >= 3 && !isCapture && !inCheck(gs, gs->turn))
+        if (depth >= 3 && i >= 3 && !isCapture && !inCheckNow)
         {
             isKiller = (ply < MAX_KILLER_PLY &&
                        (movesEqual(moves.moves[i], killerMoves[ply][0]) ||
@@ -578,8 +581,8 @@ Move* SelectBestMove(GameState *gs, Color color, int depth)
 
     bestMove = moves.moves[0];
 
-    //searching depth 2, then 4, then 6... stopping when time runs out
-    for (currentDepth = 2; currentDepth <= depth; currentDepth += 2)
+    //depth 2,4,6 stepping by 2, then 7,8 stepping by 1
+    for (currentDepth = 2; currentDepth <= depth; currentDepth += (currentDepth < 6 ? 2 : 1))
     {
         elapsed = (double)(clock() - start) / CLOCKS_PER_SEC;
         if (elapsed >= TIME_LIMIT_SECS)

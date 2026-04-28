@@ -620,7 +620,7 @@ int evaluate(GameState *gs){
         }
     }
 
-    score = material + pst + mobility + king + pawn + anteater + kingTropism + kingEscape + backRank + tempo + development;
+    score = material + pst + mobility + king + pawn + anteater + kingTropism + kingEscape + backRank + tempo + development + queenPenalty;
     //printf("TOTAL: %d\n", score); fflush(stdout);
 
     score -= CONTEMPT;
