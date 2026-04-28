@@ -638,11 +638,7 @@ static void renderGameScreen(int showClocks)
 
         // draw the status message box
         fillRect(contentX, yCursor, contentW, msgBoxH, 70, 70, 70);
-        drawText(statusMsg,
-                 contentX + 8,
-                 yCursor + 10,
-                 (SDL_Color){255, 255, 255, 255},
-                 smallFont);
+        textWrap(statusMsg, contentX + 10, yCursor + 15, contentW - 20, 20, (SDL_Color){255, 255, 255, 255}, smallFont);
 
         yCursor += msgBoxH + 20;
 
@@ -1115,13 +1111,13 @@ Move getMove(GameState *gs)
                 Square sq;
                 Piece clickedPiece;
 
-                // check if the undo button was clicked
+                // check if the undo button was clicked in its coords
                 if (pointInRect(e.button.x, e.button.y,
                                 undoBtnX, undoBtnY,
                                 undoBtnW, undoBtnH)) {
                     undoPressed = 1;
-                    clickCount = 0;
-                    hasHighlight = 0;
+                    clickCount = 0; //cleans out the click 1 & click 2
+                    hasHighlight = 0; //cleans out the highlights for selected piece
                     break;
                 }
 
@@ -1158,7 +1154,7 @@ Move getMove(GameState *gs)
 
                 // first click selects a piece
                 if (clickCount == 0) {
-                    
+                    //if square is NOT empty && square is of current player
                     if (clickedPiece.piecetype != EMPTY && clickedPiece.color == gs->turn) {
                         firstClick = sq;
                         clickCount = 1;
@@ -1188,9 +1184,9 @@ Move getMove(GameState *gs)
                         snprintf(statusMsg, sizeof(statusMsg), "select one of your own pieces");
                     }
                 } else {
-                    // if the second click is another friendly piece, switch selection
+                    // if square NOT empty && square is of current player's piece
                     if (clickedPiece.piecetype != EMPTY && clickedPiece.color == gs->turn) {
-                        firstClick = sq;
+                        firstClick = sq; //overwrite the first click. so now second click is first
 
                         allMoves = legalMoveGen(gs);
                         pieceMoves.count = 0;
