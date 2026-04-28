@@ -363,7 +363,7 @@ int evalDevelopment(GameState *gs, int phase){
 
     //base penalty: queen off back rank while minor pieces still home
     if (!sideQueenOnBack && sideUndeveloped > 0)
-        score -= sideUndeveloped * 40;
+        score -= sideUndeveloped * 80;
     if (!oppQueenOnBack  && oppUndeveloped  > 0)
         score += oppUndeveloped  * 40;
 
@@ -371,7 +371,7 @@ int evalDevelopment(GameState *gs, int phase){
     if (sideQueenRank != -1 && sideUndeveloped > 0)
     {
         int crossed = (side == YELLOW) ? (sideQueenRank <= sideEnemyHalf) : (sideQueenRank >= sideEnemyHalf);
-        if (crossed) score -= sideUndeveloped * 25;
+        if (crossed) score -= sideUndeveloped * 50;
     }
     if (oppQueenRank != -1 && oppUndeveloped > 0)
     {
@@ -599,6 +599,26 @@ int evaluate(GameState *gs){
 
     int development = evalDevelopment(gs, phase);
     //printf("Development: %d\n", development); fflush(stdout);
+    // direct queen penalty - separate from evalDevelopment
+    int queenPenalty = 0;
+    if(phase >= 18){  // only in opening
+        Color side = gs->turn;
+        Color opp = getOpponent(side);
+        int sideBackRank = (side == YELLOW) ? 7 : 0;
+        int oppBackRank  = (opp  == YELLOW) ? 7 : 0;
+
+        for(int r = 0; r < 8; r++){
+            for(int f = 0; f < 10; f++){
+                Piece p = gs->board[r][f];
+                if(p.piecetype != QUEEN) continue;
+
+                if(p.color == side && r != sideBackRank)
+                    queenPenalty -= 60;  // our queen out early = bad
+                if(p.color == opp && r != oppBackRank)
+                    queenPenalty += 60;  // their queen out early = good
+            }
+        }
+    }
 
     score = material + pst + mobility + king + pawn + anteater + kingTropism + kingEscape + backRank + tempo + development;
     //printf("TOTAL: %d\n", score); fflush(stdout);

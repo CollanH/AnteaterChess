@@ -249,7 +249,7 @@ int scoreMove(const GameState *gs, Move m, int ply)
     }
     // penalize queen moves early - searched last so eval penalty has more effect
     if(attacker == QUEEN){
-        return -50;
+        return -100;
     }
     //history score capped at 70 so it stays below killers
     h = historyTable[m.from.rank][m.from.file][m.to.rank][m.to.file];
