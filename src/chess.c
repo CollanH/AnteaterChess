@@ -16,11 +16,15 @@ bool inCheck(const GameState *gs, Color color);
 static void apply_human_promotion_if_needed(GameState *gs, const GameState *before, Move move);
 static int  run_ai_search(GameState *gs, Color color, int depth, Move *out);
 
-//gui signals 
-extern int stopChainPressed; 
-extern int logCount; 
+//gui signals
+extern int stopChainPressed;
+extern int logCount;
 
-//holds everything the AI thread needs, plus the result
+// this struct bundles everything the AI thread needs to do its search.
+// we copy the game state in here so the AI works on its own snapshot
+// and doesn't touch the real board while the human could be clicking around.
+// 'done' is volatile because the main thread reads it in a loop — volatile
+// tells the compiler not to cache the value in a register.
 typedef struct
 {
     GameState    gs_copy;
@@ -31,6 +35,8 @@ typedef struct
     volatile int done;
 } AISearchJob;
 
+// this is the function that runs on the background thread.
+// it just calls SelectBestMove on the copied game state and stores the result.
 static int ai_thread_func(void *arg)
 {
     AISearchJob *job = (AISearchJob *)arg;
@@ -46,8 +52,10 @@ static int ai_thread_func(void *arg)
     return 0;
 }
 
-//runs SelectBestMove on a background thread so the GUI stays alive while the AI thinks
-//returns 1 if a move was found, 0 if no legal moves
+// kicks off the AI search on a background thread so the window doesn't freeze
+// while the AI is thinking. the main thread spins in a loop calling aiMove()
+// which keeps rendering frames until job.done flips to 1.
+// returns 1 if the AI found a move, 0 if there were no legal moves.
 static int run_ai_search(GameState *gs, Color color, int depth, Move *out)
 {
     AISearchJob  job;
@@ -75,6 +83,9 @@ static int run_ai_search(GameState *gs, Color color, int depth, Move *out)
     return job.found;
 }
 
+// after a human moves an ant to the back rank, we need to ask what piece they want.
+// we check if it was actually a promotion move first — if not, we just return.
+// dispPromotion() opens a dialog and returns the chosen piece type.
 static void apply_human_promotion_if_needed(GameState *gs, const GameState *before, Move move)
 {
     GameState *promoted;
@@ -93,17 +104,21 @@ static void apply_human_promotion_if_needed(GameState *gs, const GameState *befo
     }
 }
 
+// this is the entry point for the whole program.
+// the structure is two nested loops:
+//   outer loop = one full game (menu -> play -> back to menu)
+//   inner loop = one move per iteration
 int main()
 {
     GameState  gs;
-    GameState  prevGs;    
-    int        hasPrev;  
-   
+    GameState  prevGs;    // snapshot of the board from the previous move, used for undo
+    int        hasPrev;   // whether prevGs is valid (0 at game start or after an undo)
 
-    int        matchup;
+
+    int        matchup;   // 0=HvH, 1=HvAI, 2=AIvAI
     Color      humanColor;
     Color      winner;
-    int        depth;
+    int        depth;     // how many plies deep the AI searches
     int        diff;
 
     int        clockSecs;
@@ -128,7 +143,9 @@ int main()
 
     logfile = fopen("chess_log.txt", "w");
 
-    //outer loop returns here after each game ends
+    // outer loop — each iteration is one full game.
+    // when a game ends (checkmate, timeout, return key) we break the inner loop
+    // and land back here to show the menu again.
     while (1)
     {
         matchup   = matchupMenu();
@@ -138,6 +155,8 @@ int main()
         depth      = 0;
         humanColor = YELLOW;
 
+        // based on what matchup the player picked, we ask the right questions.
+        // difficulty maps directly to search depth: easy=2 plies, medium=4, hard=8.
         switch (matchup)
         {
             case 0:
@@ -181,14 +200,18 @@ int main()
         running    = 1;
         lastTime   = time(NULL);
 
+        // inner loop — each iteration is one move.
+        // we tick the clock, render the board, generate legal moves,
+        // check for game-over, then handle input based on the matchup type.
         while (running)
         {
-            //updating clock for current player
+            // tick the clock for whoever's turn it is
             currentTime = time(NULL);
             elapsed     = (int)(currentTime - lastTime);
             lastTime    = currentTime;
             GuiInput in = pollGuiInput();
 
+            // return key from the menu screen exits back to matchup selection
             if (in.ret)
             {
                 running = 0;
@@ -206,6 +229,7 @@ int main()
                 blueSecs -= elapsed;
             }
 
+            // if either clock hits zero, show the timeout screen and end the game
             if (yellowSecs <= 0)
             {
                 displayBoard(&gs, 0, blueSecs, humanColor);
@@ -221,9 +245,11 @@ int main()
 
             displayBoard(&gs, yellowSecs, blueSecs, humanColor);
 
+            // generate every legal move for whoever's turn it is
             legalMoves = legalMoveGen(&gs);
 
-            //checkmate or stalemate check
+            // if there are zero legal moves, the game is over.
+            // if the current player is in check it's checkmate, otherwise stalemate.
             if (legalMoves.count == 0)
             {
                 if (inCheck(&gs, gs.turn))
@@ -247,7 +273,8 @@ int main()
 
             switch (matchup)
             {
-                //AI vs AI
+                // AI vs AI — both sides call run_ai_search each turn.
+                // if the return key is pressed we bail back to the menu.
                 case 2:
                     if (!run_ai_search(&gs, gs.turn, depth, &move)|| wasReturnPressed())
                     {
@@ -261,18 +288,21 @@ int main()
                     gs = *make_move_ai(&gs, move);
                     break;
 
-                //user vs user, always a human turn
+                // Human vs Human — both sides go through getMove() which waits for a click.
+                // supports undo (restores prevGs), anteater chain stopping, and promotion.
                 case 0:
                     dispLegalMoves(&legalMoves);
                     move = getMove(&gs);
 
                     in = pollGuiInput();
-                    if (in.ret) { 
-                        running = 0; 
+                    if (in.ret) {
+                        running = 0;
                         hasPrev = 0;
-                        break; 
+                        break;
                     }
 
+                    // anteater chain — if the player pressed stop chain, end the anteater's
+                    // multi-capture turn early and hand control to the other side
                     if (in.stopChain)
                     {
                         gs.anteater_ate = false;
@@ -283,6 +313,7 @@ int main()
                     }
 
                     //TODO: coordinate undo signal from GUI with Oreo
+                    // undo — if we saved a previous state, snap back to it
                     if (in.undo)
                     {
                         if (hasPrev)
@@ -294,6 +325,8 @@ int main()
                         break;
                     }
 
+                    // normal move — save the current state for undo, apply the move,
+                    // then check if a promotion dialog needs to pop up
                     prevGs  = gs;
                     hasPrev = 1;
                     logMove(logfile, gs.turn, move, 0, humanColor);
@@ -301,7 +334,8 @@ int main()
                     apply_human_promotion_if_needed(&gs, &prevGs, move);
                     break;
 
-                //user vs AI — AI moves on its turn, human moves on theirs
+                // Human vs AI — if it's the AI's turn we run the search,
+                // otherwise the human clicks a move just like in HvH.
                 case 1:
                     if (gs.turn != humanColor)
                     {
@@ -320,10 +354,10 @@ int main()
                         move = getMove(&gs);
 
                         in = pollGuiInput();
-                        if (in.ret) { 
-                            running = 0; 
+                        if (in.ret) {
+                            running = 0;
                             hasPrev = 0;
-                            break; 
+                            break;
                         }
 
                         if (in.stopChain)
@@ -369,21 +403,24 @@ int main()
 }
 
 //TODO: implement move logging
+// writes a move to both the log file and stdout in the format "Yellow A2 -> A4".
+// if it's an undo we flip from/to so the log shows the move being reversed.
+// addMoveLog also sends it to the on-screen move history panel.
 void logMove(FILE *logfile, Color color, Move move, int isUndo, Color humanColor)
 {
-    const char *colorStr = (color == YELLOW) ? "Yellow" : "Blue"; 
-    char fromFile = (char)('A'+move.from.file); 
+    const char *colorStr = (color == YELLOW) ? "Yellow" : "Blue";
+    char fromFile = (char)('A'+move.from.file);
     char toFile   = (char)('A' + move.to.file);
     int  fromRank = 8 - move.from.rank;
     int  toRank   = 8 - move.to.rank;
 
     //writing to log file
     if(logfile != NULL) {
-        fprintf(logfile, "%s %c%d -> %c%d\n", colorStr, fromFile, fromRank, toFile, toRank); 
-        fflush (logfile); 
+        fprintf(logfile, "%s %c%d -> %c%d\n", colorStr, fromFile, fromRank, toFile, toRank);
+        fflush (logfile);
     }
-    printf("%s: %c%d -> %c%d\n", colorStr, fromFile, fromRank, toFile, toRank); 
-    fflush(stdout); 
+    printf("%s: %c%d -> %c%d\n", colorStr, fromFile, fromRank, toFile, toRank);
+    fflush(stdout);
 
     if (isUndo)
     addMoveLog(color, (Move){move.to, move.from}, humanColor);
@@ -392,13 +429,16 @@ void logMove(FILE *logfile, Color color, Move move, int isUndo, Color humanColor
 
 }
 
-//board[0] = blue back rank (rank 8, top)
-//board[7] = yellow back rank (rank 1, bottom)
+// sets up the starting board position for our custom 8x10 variant.
+// board[0] is blue's back rank (top of the screen), board[7] is yellow's (bottom).
+// anteaters sit at columns D and G, between the bishops and the queen/king.
+// all castling rights start as true and get revoked when pieces move.
 void init_board(GameState *gs)
 {
     int r;
     int f;
 
+    // fill every square with empty first, then place pieces on top
     for (r = 0; r < 8; r++)
     {
         for (f = 0; f < 10; f++)
@@ -453,7 +493,8 @@ void init_board(GameState *gs)
     refresh_piece_cache(gs);
 }
 
-//validates typed input against the move list, only used in textChess
+// checks whether a given move appears in the legal move list.
+// used in text mode to reject illegal input from the player.
 bool is_legal(MoveList *moves, Move move)
 {
     int i;

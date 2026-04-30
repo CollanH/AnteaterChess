@@ -46,9 +46,9 @@ void     sortMoves(const GameState *gs, MoveList *moves, int ply);
 GameState apply_move(const GameState *gs, Move move);
 
 //search state
-clock_t searchStartTime;
-bool    searchAborted;
-int     nodeCount;
+struct timespec searchStartTime;
+bool            searchAborted;
+int             nodeCount;
 
 //two quiet beta-cutoff moves per ply
 #define MAX_KILLER_PLY 32
@@ -69,13 +69,16 @@ TranspoEntry transpoTable[TRANSPO_SIZE];
 //checks time limit, only reads clock every 2048 nodes to reduce overhead
 bool timeUp(void)
 {
-    double elapsed;
+    struct timespec now;
+    double          elapsed;
 
     if (nodeCount++ & 2047)
     {
         return false;
     }
-    elapsed = (double)(clock() - searchStartTime) / CLOCKS_PER_SEC;
+    clock_gettime(CLOCK_MONOTONIC, &now);
+    elapsed = (now.tv_sec - searchStartTime.tv_sec) +
+              (now.tv_nsec - searchStartTime.tv_nsec) * 1e-9;
     return elapsed >= TIME_LIMIT_SECS;
 }
 
@@ -149,6 +152,11 @@ uint64_t computeHash(const GameState *gs)
 }
 
 //looks up position in transpo table, returns true if a usable result is found
+//key & MASK maps a 64-bit hash to a table index - e.g. key=0xFF3 & 0xFFFFF -> slot 0xFF3
+//three flag cases:
+//  EXACT - we searched every move and got a real score, e.g. stored=50 -> return 50
+//  ALPHA - all moves scored <= alpha (upper bound), e.g. stored=30 with alpha=40 -> position is bad, return alpha
+//  BETA  - a move scored >= beta (lower bound), e.g. stored=90 with beta=80 -> causes cutoff, return beta
 bool transpoProbe(uint64_t key, int depth, int alpha, int beta, int *score)
 {
     TranspoEntry *e;
@@ -177,6 +185,7 @@ bool transpoProbe(uint64_t key, int depth, int alpha, int beta, int *score)
 }
 
 //stores a search result - keeps deeper entries since they have more info
+//e.g. slot has depth=5 and we try to store depth=3 -> skip, the old entry searched more moves
 void transpoStore(uint64_t key, int depth, int score, int flag, Move bestMove)
 {
     TranspoEntry *e;
@@ -194,6 +203,7 @@ void transpoStore(uint64_t key, int depth, int score, int flag, Move bestMove)
 }
 
 //fills out with the stored best move for this position, returns 1 if found
+//e.g. this position was searched before and d2->d4 was best - put it at index 0 so it gets tried first
 int transpoGetBestMove(uint64_t key, Move *out)
 {
     TranspoEntry *e;
@@ -207,7 +217,7 @@ int transpoGetBestMove(uint64_t key, Move *out)
     return 1;
 }
 
-//comparing from and to squares of two moves
+//comparing from and to squares of two moves - e.g. e2->e4 vs e2->e4 is true, e2->e4 vs e2->e3 is false
 int movesEqual(Move a, Move b)
 {
     return a.from.rank == b.from.rank && a.from.file == b.from.file &&
@@ -364,8 +374,9 @@ int quiesce(GameState *gs, int alpha, int beta, int qDepth)
 }
 
 //recursive negamax search with alpha-beta pruning
+//this is DFS - it follows one branch all the way to depth=0 before backtracking and trying the next move
 //score is from the perspective of whoever is moving - positive means winning
-//ply = distance from root, used to prefer shorter mates
+//ply = how many moves deep from the root we are - root=0, after first move=1, after second=2, etc.
 int negamax(GameState *gs, int depth, int alpha, int beta, int ply)
 {
     uint64_t key;
@@ -411,6 +422,8 @@ int negamax(GameState *gs, int depth, int alpha, int beta, int ply)
         if (inCheck(gs, gs->turn))
         {
             //shorter mate scores higher than longer mate
+            //e.g. mate at ply=2 -> -(1000000-2)=-999998, mate at ply=5 -> -(1000000-5)=-999995
+            //the engine receiving -999998 flips it to +999998 which beats +999995, so it picks the faster mate
             return -(INF - ply);
         }
         return 0;
@@ -552,8 +565,8 @@ Move* SelectBestMove(GameState *gs, Color color, int depth)
     int         i;
     int         currentDepth;
     int         score;
-    clock_t     start;
-    double      elapsed;
+    struct timespec start;
+    double          elapsed;
     Color       sideToMove;
     UndoData    undo;
 
@@ -564,7 +577,7 @@ Move* SelectBestMove(GameState *gs, Color color, int depth)
         zobristInit();
     }
 
-    searchStartTime = clock();
+    clock_gettime(CLOCK_MONOTONIC, &searchStartTime);
     searchAborted   = false;
     nodeCount       = 0;
     start           = searchStartTime;
@@ -584,7 +597,7 @@ Move* SelectBestMove(GameState *gs, Color color, int depth)
     //depth 2,4,6 stepping by 2, then 7,8 stepping by 1
     for (currentDepth = 2; currentDepth <= depth; currentDepth += (currentDepth < 6 ? 2 : 1))
     {
-        elapsed = (double)(clock() - start) / CLOCKS_PER_SEC;
+        { struct timespec _now; clock_gettime(CLOCK_MONOTONIC, &_now); elapsed = (_now.tv_sec - start.tv_sec) + (_now.tv_nsec - start.tv_nsec) * 1e-9; }
         if (elapsed >= TIME_LIMIT_SECS)
         {
             break;
@@ -632,7 +645,7 @@ Move* SelectBestMove(GameState *gs, Color color, int depth)
         if (!searchAborted)
         {
             bestMove = bestAtDepth;
-            elapsed  = (double)(clock() - start) / CLOCKS_PER_SEC;
+            { struct timespec _now; clock_gettime(CLOCK_MONOTONIC, &_now); elapsed = (_now.tv_sec - start.tv_sec) + (_now.tv_nsec - start.tv_nsec) * 1e-9; }
             printf("depth %d done in %.2fs  best: %c%d -> %c%d\n",
                    currentDepth,
                    elapsed,
