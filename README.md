@@ -54,6 +54,14 @@ make run
 make clean
 ```
 
+**Running over SSH (Linux server):**
+
+X11 forwarding is required to display the GUI remotely:
+```bash
+ssh -X username@server
+```
+On macOS clients, install [XQuartz](https://www.xquartz.org) first.
+
 ---
 
 ## AI Engine
