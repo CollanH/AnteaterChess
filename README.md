@@ -44,9 +44,10 @@ sudo apt-get install libsdl2-dev libsdl2-ttf-dev libsdl2-image-dev
 **Build and run:**
 ```bash
 make
-cd bin
-./chess
+make run
 ```
+
+> `make run` is required (not `./bin/chess` directly) — the binary looks for piece images relative to its working directory.
 
 **Clean:**
 ```bash
