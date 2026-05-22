@@ -85,7 +85,7 @@ MoveList legalMoveGen(GameState *gs) {
 		if (gs->anteater_chain_square.rank >= 0 &&
 			gs->anteater_chain_square.rank < 8 &&
 			gs->anteater_chain_square.file >= A &&
-			gs->anteater_chain_square.file <= J &&
+			gs->anteater_chain_square.file < BOARD_FILES &&
 			gs->board[gs->anteater_chain_square.rank][gs->anteater_chain_square.file].piecetype == ANTEATER &&
 			gs->board[gs->anteater_chain_square.rank][gs->anteater_chain_square.file].color == turn) {
 			squareToMoves(gs, gs->anteater_chain_square, &moveList);
@@ -158,7 +158,7 @@ Square find_king_square(const GameState* gs, Color color) {
 }
 
 bool in_bounds(Square square){
-	return square.rank < 8 && square.rank >= 0 && square.file < 10 && square.file >= 0;
+	return square.rank < 8 && square.rank >= 0 && square.file < BOARD_FILES && square.file >= 0;
 }
 
 bool queen_bishop_rook_check(const GameState* gs, Color color){
@@ -430,145 +430,128 @@ void kingMoves(const GameState *gs, Square square, MoveList* moveList){
 		}
 	}
 
-	// castling logic
+	// castling logic — branches on game mode:
+	//   Anteater Chess: king at F (file 5), rooks at A and J
+	//   Standard Chess: king at E (file 4), rooks at A and H
 
 	if (piece_at(gs, square)->color == YELLOW) {
-	    if (gs->yellow_qscastle && square.rank == 7 && square.file == F) {
-	        bool can = true;
-
-	        if (inCheck(gs, YELLOW)) {
-	            can = false;
+	    if (!standard_chess_mode) {
+	        // ---- Anteater queenside: king F -> D ----
+	        if (gs->yellow_qscastle && square.rank == 7 && square.file == F) {
+	            bool can = true;
+	            if (inCheck(gs, YELLOW)) can = false;
+	            if (piece_at(gs, make_square(7, B))->piecetype != EMPTY ||
+	                piece_at(gs, make_square(7, C))->piecetype != EMPTY ||
+	                piece_at(gs, make_square(7, D))->piecetype != EMPTY ||
+	                piece_at(gs, make_square(7, E))->piecetype != EMPTY) can = false;
+	            if (can) {
+	                Move m; m.from = square;
+	                m.to = make_square(7, E); if (move_in_check(gs, &m)) can = false;
+	                m.to = make_square(7, D); if (move_in_check(gs, &m)) can = false;
+	            }
+	            if (can) { Move m; m.from = square; m.to = make_square(7, D); append_move(moveList, m); }
 	        }
-
-	        // squares between rook and king must be empty
-	        if (piece_at(gs, make_square(7, B))->piecetype != EMPTY ||
-	            piece_at(gs, make_square(7, C))->piecetype != EMPTY ||
-	            piece_at(gs, make_square(7, D))->piecetype != EMPTY ||
-	            piece_at(gs, make_square(7, E))->piecetype != EMPTY) {
-	            can = false;
+	        // ---- Anteater kingside: king F -> H ----
+	        if (gs->yellow_kscastle && square.rank == 7 && square.file == F) {
+	            bool can = true;
+	            if (inCheck(gs, YELLOW)) can = false;
+	            if (piece_at(gs, make_square(7, G))->piecetype != EMPTY ||
+	                piece_at(gs, make_square(7, H))->piecetype != EMPTY ||
+	                piece_at(gs, make_square(7, I))->piecetype != EMPTY) can = false;
+	            if (can) {
+	                Move m; m.from = square;
+	                m.to = make_square(7, G); if (move_in_check(gs, &m)) can = false;
+	                m.to = make_square(7, H); if (move_in_check(gs, &m)) can = false;
+	            }
+	            if (can) { Move m; m.from = square; m.to = make_square(7, H); append_move(moveList, m); }
 	        }
-
-	        // king path safety: E, D
-	        if (can) {
-	            Move move;
-	            move.from = square;
-
-	            move.to = make_square(7, E);
-	            if (move_in_check(gs, &move)) can = false;
-
-	            move.to = make_square(7, D);
-	            if (move_in_check(gs, &move)) can = false;
+	    } else {
+	        // ---- Standard queenside: king E -> C ----
+	        if (gs->yellow_qscastle && square.rank == 7 && square.file == E) {
+	            bool can = true;
+	            if (inCheck(gs, YELLOW)) can = false;
+	            if (piece_at(gs, make_square(7, B))->piecetype != EMPTY ||
+	                piece_at(gs, make_square(7, C))->piecetype != EMPTY ||
+	                piece_at(gs, make_square(7, D))->piecetype != EMPTY) can = false;
+	            if (can) {
+	                Move m; m.from = square;
+	                m.to = make_square(7, D); if (move_in_check(gs, &m)) can = false;
+	                m.to = make_square(7, C); if (move_in_check(gs, &m)) can = false;
+	            }
+	            if (can) { Move m; m.from = square; m.to = make_square(7, C); append_move(moveList, m); }
 	        }
-
-	        if (can) {
-	            Move move;
-	            move.from = square;
-	            move.to = make_square(7, D);
-	            append_move(moveList, move);
-	        }
-	    }
-
-	    if (gs->yellow_kscastle && square.rank == 7 && square.file == F) {
-	        bool can = true;
-
-	        if (inCheck(gs, YELLOW)) {
-	            can = false;
-	        }
-
-	        // squares between king and rook must be empty
-	        if (piece_at(gs, make_square(7, G))->piecetype != EMPTY ||
-	            piece_at(gs, make_square(7, H))->piecetype != EMPTY ||
-	            piece_at(gs, make_square(7, I))->piecetype != EMPTY) {
-	            can = false;
-	        }
-
-	        // king path safety: G, H
-	        if (can) {
-	            Move move;
-	            move.from = square;
-
-	            move.to = make_square(7, G);
-	            if (move_in_check(gs, &move)) can = false;
-
-	            move.to = make_square(7, H);
-	            if (move_in_check(gs, &move)) can = false;
-	        }
-
-	        if (can) {
-	            Move move;
-	            move.from = square;
-	            move.to = make_square(7, H);
-	            append_move(moveList, move);
+	        // ---- Standard kingside: king E -> G ----
+	        if (gs->yellow_kscastle && square.rank == 7 && square.file == E) {
+	            bool can = true;
+	            if (inCheck(gs, YELLOW)) can = false;
+	            if (piece_at(gs, make_square(7, F))->piecetype != EMPTY ||
+	                piece_at(gs, make_square(7, G))->piecetype != EMPTY) can = false;
+	            if (can) {
+	                Move m; m.from = square;
+	                m.to = make_square(7, F); if (move_in_check(gs, &m)) can = false;
+	                m.to = make_square(7, G); if (move_in_check(gs, &m)) can = false;
+	            }
+	            if (can) { Move m; m.from = square; m.to = make_square(7, G); append_move(moveList, m); }
 	        }
 	    }
-	}
-	else {
-	    if (gs->blue_qscastle && square.rank == 0 && square.file == F) {
-	        bool can = true;
-
-	        if (inCheck(gs, BLUE)) {
-	            can = false;
+	} else {
+	    if (!standard_chess_mode) {
+	        // ---- Anteater queenside: king F -> D ----
+	        if (gs->blue_qscastle && square.rank == 0 && square.file == F) {
+	            bool can = true;
+	            if (inCheck(gs, BLUE)) can = false;
+	            if (piece_at(gs, make_square(0, B))->piecetype != EMPTY ||
+	                piece_at(gs, make_square(0, C))->piecetype != EMPTY ||
+	                piece_at(gs, make_square(0, D))->piecetype != EMPTY ||
+	                piece_at(gs, make_square(0, E))->piecetype != EMPTY) can = false;
+	            if (can) {
+	                Move m; m.from = square;
+	                m.to = make_square(0, E); if (move_in_check(gs, &m)) can = false;
+	                m.to = make_square(0, D); if (move_in_check(gs, &m)) can = false;
+	            }
+	            if (can) { Move m; m.from = square; m.to = make_square(0, D); append_move(moveList, m); }
 	        }
-
-	        // squares between rook and king must be empty
-	        if (piece_at(gs, make_square(0, B))->piecetype != EMPTY ||
-	            piece_at(gs, make_square(0, C))->piecetype != EMPTY ||
-	            piece_at(gs, make_square(0, D))->piecetype != EMPTY ||
-	            piece_at(gs, make_square(0, E))->piecetype != EMPTY) {
-	            can = false;
+	        // ---- Anteater kingside: king F -> H ----
+	        if (gs->blue_kscastle && square.rank == 0 && square.file == F) {
+	            bool can = true;
+	            if (inCheck(gs, BLUE)) can = false;
+	            if (piece_at(gs, make_square(0, G))->piecetype != EMPTY ||
+	                piece_at(gs, make_square(0, H))->piecetype != EMPTY ||
+	                piece_at(gs, make_square(0, I))->piecetype != EMPTY) can = false;
+	            if (can) {
+	                Move m; m.from = square;
+	                m.to = make_square(0, G); if (move_in_check(gs, &m)) can = false;
+	                m.to = make_square(0, H); if (move_in_check(gs, &m)) can = false;
+	            }
+	            if (can) { Move m; m.from = square; m.to = make_square(0, H); append_move(moveList, m); }
 	        }
-
-	        // king path safety: E, D
-	        if (can) {
-	            Move move;
-	            move.from = square;
-
-	            move.to = make_square(0, E);
-	            if (move_in_check(gs, &move)) can = false;
-
-	            move.to = make_square(0, D);
-	            if (move_in_check(gs, &move)) can = false;
+	    } else {
+	        // ---- Standard queenside: king E -> C ----
+	        if (gs->blue_qscastle && square.rank == 0 && square.file == E) {
+	            bool can = true;
+	            if (inCheck(gs, BLUE)) can = false;
+	            if (piece_at(gs, make_square(0, B))->piecetype != EMPTY ||
+	                piece_at(gs, make_square(0, C))->piecetype != EMPTY ||
+	                piece_at(gs, make_square(0, D))->piecetype != EMPTY) can = false;
+	            if (can) {
+	                Move m; m.from = square;
+	                m.to = make_square(0, D); if (move_in_check(gs, &m)) can = false;
+	                m.to = make_square(0, C); if (move_in_check(gs, &m)) can = false;
+	            }
+	            if (can) { Move m; m.from = square; m.to = make_square(0, C); append_move(moveList, m); }
 	        }
-
-	        if (can) {
-	            Move move;
-	            move.from = square;
-	            move.to = make_square(0, D);
-	            append_move(moveList, move);
-	        }
-	    }
-
-	    if (gs->blue_kscastle && square.rank == 0 && square.file == F) {
-	        bool can = true;
-
-	        if (inCheck(gs, BLUE)) {
-	            can = false;
-	        }
-
-	        // squares between king and rook must be empty
-	        if (piece_at(gs, make_square(0, G))->piecetype != EMPTY ||
-	            piece_at(gs, make_square(0, H))->piecetype != EMPTY ||
-	            piece_at(gs, make_square(0, I))->piecetype != EMPTY) {
-	            can = false;
-	        }
-
-	        // king path safety: G, H
-	        if (can) {
-	            Move move;
-	            move.from = square;
-
-	            move.to = make_square(0, G);
-	            if (move_in_check(gs, &move)) can = false;
-
-	            move.to = make_square(0, H);
-	            if (move_in_check(gs, &move)) can = false;
-	        }
-
-	        if (can) {
-	            Move move;
-	            move.from = square;
-	            move.to = make_square(0, H);
-	            append_move(moveList, move);
+	        // ---- Standard kingside: king E -> G ----
+	        if (gs->blue_kscastle && square.rank == 0 && square.file == E) {
+	            bool can = true;
+	            if (inCheck(gs, BLUE)) can = false;
+	            if (piece_at(gs, make_square(0, F))->piecetype != EMPTY ||
+	                piece_at(gs, make_square(0, G))->piecetype != EMPTY) can = false;
+	            if (can) {
+	                Move m; m.from = square;
+	                m.to = make_square(0, F); if (move_in_check(gs, &m)) can = false;
+	                m.to = make_square(0, G); if (move_in_check(gs, &m)) can = false;
+	            }
+	            if (can) { Move m; m.from = square; m.to = make_square(0, G); append_move(moveList, m); }
 	        }
 	    }
 	}

@@ -8,13 +8,24 @@
 #include "legalMoveGen.h"
 #include "gui.h"
 
+// 0 = Anteater Chess, 1 = Standard Chess — read by legalMoveGen and chess_types
+int standard_chess_mode = 0;
+
 //function declarations
 void logMove(FILE *logfile, Color color, Move move, int isUndo, Color humanColor);
 void init_board(GameState *gs);
+void init_board_standard(GameState *gs);
 bool is_legal(MoveList *moves, Move move);
 bool inCheck(const GameState *gs, Color color);
 static void apply_human_promotion_if_needed(GameState *gs, const GameState *before, Move move);
 static int  run_ai_search(GameState *gs, Color color, int depth, Move *out);
+
+// applies a move to gs in-place, freeing the temporary heap allocation from make_move
+static void apply_move_gs(GameState *gs, Move move)
+{
+    GameState *tmp = make_move(gs, move);
+    if (tmp) { *gs = *tmp; free(tmp); }
+}
 
 //gui signals
 extern int stopChainPressed;
@@ -101,6 +112,7 @@ static void apply_human_promotion_if_needed(GameState *gs, const GameState *befo
     if (promoted != NULL)
     {
         *gs = *promoted;
+        free(promoted);
     }
 }
 
@@ -148,9 +160,15 @@ int main()
     // and land back here to show the menu again.
     while (1)
     {
-        matchup   = matchupMenu();
-        clockSecs = clockMenu() * 300;  //1->5min, 2->10min, 3->15min
-        //TODO: clockMenu needs a no-clock option (return 0), coordinate with Oreo
+        standard_chess_mode = gameModeMenu();
+        if (standard_chess_mode < 0) break;  // Exit selected
+
+        matchup = matchupMenu();
+        if (matchup < 0) continue;  // Back to mode menu
+
+        int clockRaw = clockMenu();
+        if (clockRaw < 0) continue;  // Back to mode menu
+        clockSecs = clockRaw * 300;  //1->5min, 2->10min, 3->15min
 
         depth      = 0;
         humanColor = YELLOW;
@@ -161,12 +179,18 @@ int main()
         {
             case 0:
                 //user vs user, ask for color so yellow always goes first
-                humanColor = colorMenu();
+            {
+                int c = colorMenu();
+                if (c < 0) { matchup = -1; break; }
+                humanColor = (Color)c;
                 break;
+            }
 
             case 1:
                 //user vs AI, need difficulty and color
+            {
                 diff = difficultyMenu();
+                if (diff < 0) { matchup = -1; break; }
                 if (diff < 3)
                 {
                     depth = diff * 2;  //easy=2, medium=4
@@ -175,12 +199,17 @@ int main()
                 {
                     depth = 8;  //hard=8
                 }
-                humanColor = colorMenu();
+                int c = colorMenu();
+                if (c < 0) { matchup = -1; break; }
+                humanColor = (Color)c;
                 break;
+            }
 
             case 2:
                 //AI vs AI, just need difficulty
+            {
                 diff = difficultyMenu();
+                if (diff < 0) { matchup = -1; break; }
                 if (diff < 3)
                 {
                     depth = diff * 2;  //easy=2, medium=4
@@ -190,9 +219,14 @@ int main()
                     depth = 8;  //hard=8
                 }
                 break;
+            }
         }
+        if (matchup < 0) continue;  // Back selected inside switch, restart from mode menu
 
-        init_board(&gs);
+        if (standard_chess_mode)
+            init_board_standard(&gs);
+        else
+            init_board(&gs);
 
         yellowSecs = clockSecs;
         blueSecs   = clockSecs;
@@ -285,7 +319,7 @@ int main()
                     prevGs  = gs;
                     hasPrev = 1;
                     logMove(logfile, gs.turn, move, 0, humanColor);
-                    gs = *make_move_ai(&gs, move);
+                    apply_move_gs(&gs, move);
                     break;
 
                 // Human vs Human — both sides go through getMove() which waits for a click.
@@ -330,7 +364,7 @@ int main()
                     prevGs  = gs;
                     hasPrev = 1;
                     logMove(logfile, gs.turn, move, 0, humanColor);
-                    gs = *make_move(&gs, move);
+                    apply_move_gs(&gs, move);
                     apply_human_promotion_if_needed(&gs, &prevGs, move);
                     break;
 
@@ -346,7 +380,7 @@ int main()
                             break;
                         }
                         logMove(logfile, gs.turn, move, 0, humanColor);
-                        gs = *make_move(&gs, move);
+                        apply_move_gs(&gs, move);
                     }
                     else
                     {
@@ -383,7 +417,7 @@ int main()
                         prevGs  = gs;
                         hasPrev = 1;
                         logMove(logfile, gs.turn, move, 0, humanColor);
-                        gs = *make_move(&gs, move);
+                        apply_move_gs(&gs, move);
                         apply_human_promotion_if_needed(&gs, &prevGs, move);
                     }
                     break;
@@ -490,6 +524,54 @@ void init_board(GameState *gs)
     gs->anteater_chain_square = make_square(-1, A);
     gs->en_passant_square  = make_square(-1, A);
     gs->prev_state         = NULL;
+    refresh_piece_cache(gs);
+}
+
+// standard 8x8 chess setup on files A-H, king at E (file=4), queen at D (file=3)
+// files I and J remain empty
+void init_board_standard(GameState *gs)
+{
+    int r, f;
+
+    for (r = 0; r < 8; r++)
+        for (f = 0; f < 10; f++)
+            gs->board[r][f] = (Piece){EMPTY, YELLOW};
+
+    // Blue back rank (row 0)
+    gs->board[0][A] = (Piece){ROOK,   BLUE};
+    gs->board[0][B] = (Piece){KNIGHT, BLUE};
+    gs->board[0][C] = (Piece){BISHOP, BLUE};
+    gs->board[0][D] = (Piece){QUEEN,  BLUE};
+    gs->board[0][E] = (Piece){KING,   BLUE};
+    gs->board[0][F] = (Piece){BISHOP, BLUE};
+    gs->board[0][G] = (Piece){KNIGHT, BLUE};
+    gs->board[0][H] = (Piece){ROOK,   BLUE};
+
+    for (f = A; f <= H; f++)
+        gs->board[1][f] = (Piece){ANT, BLUE};
+
+    for (f = A; f <= H; f++)
+        gs->board[6][f] = (Piece){ANT, YELLOW};
+
+    // Yellow back rank (row 7)
+    gs->board[7][A] = (Piece){ROOK,   YELLOW};
+    gs->board[7][B] = (Piece){KNIGHT, YELLOW};
+    gs->board[7][C] = (Piece){BISHOP, YELLOW};
+    gs->board[7][D] = (Piece){QUEEN,  YELLOW};
+    gs->board[7][E] = (Piece){KING,   YELLOW};
+    gs->board[7][F] = (Piece){BISHOP, YELLOW};
+    gs->board[7][G] = (Piece){KNIGHT, YELLOW};
+    gs->board[7][H] = (Piece){ROOK,   YELLOW};
+
+    gs->turn                  = YELLOW;
+    gs->yellow_kscastle       = true;
+    gs->yellow_qscastle       = true;
+    gs->blue_kscastle         = true;
+    gs->blue_qscastle         = true;
+    gs->anteater_ate          = false;
+    gs->anteater_chain_square = make_square(-1, A);
+    gs->en_passant_square     = make_square(-1, A);
+    gs->prev_state            = NULL;
     refresh_piece_cache(gs);
 }
 

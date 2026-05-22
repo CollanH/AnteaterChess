@@ -250,3 +250,115 @@ Our code in negamax():
 
   depth - 3 is the null move reduction (R=2): we search 2 plies shallower
   than normal to quickly confirm whether the cutoff applies.
+
+
+----------------------------------------------------------------------
+10. TT Best Move (Principal Variation Move Ordering)
+----------------------------------------------------------------------
+
+Source page (contains code example):
+  Chess Programming Wiki — Principal Variation
+  https://www.chessprogramming.org/Principal_Variation
+
+What it is:
+  The principal variation (PV) is the sequence of best moves the search has
+  found so far. By storing the first move of that sequence inside the
+  transposition table entry, the next time the same position is reached the
+  search can try the previously-best move first, before any other. Alpha-beta
+  pruning is most effective when strong moves are searched first — the window
+  collapses quickly and many branches are skipped.
+
+Our code in negamax():
+  tt_get_best_move(key, &tt_move) retrieves the stored move.
+  A linear scan over moves[] finds it and swaps it to index 0, so it is
+  searched before the rest of the sorted list.
+  best_move_local is updated whenever a move raises alpha (flag = TT_EXACT)
+  and is written to the TT via tt_store at the end of the node.
+
+
+----------------------------------------------------------------------
+11. Killer Heuristic
+----------------------------------------------------------------------
+
+Source page (contains code example):
+  Chess Programming Wiki — Killer Move
+  https://www.chessprogramming.org/Killer_Move
+
+What it is:
+  A killer move is a quiet (non-capture) move that caused a beta cutoff at a
+  specific ply during an earlier search of a sibling branch. If a quiet move
+  was strong enough to cut off one branch at ply N, it is likely to be strong
+  in other branches at the same ply. Two killer slots per ply are kept: the
+  most recent cutoff move goes to slot 0 and the previous one shifts to slot 1.
+
+  In move ordering, killers score 90 (slot 0) or 80 (slot 1) — just below
+  the minimum MVV-LVA capture score (100) but above all other quiet moves (0).
+  This ensures killers are searched immediately after captures.
+
+Our code:
+  killer_moves[MAX_KILLER_PLY][2] — two slots per ply, reset each search
+  update_killer(ply, move) — called on every quiet beta cutoff in negamax
+  score_move() checks killers for non-capture moves and returns 90 or 80
+
+
+----------------------------------------------------------------------
+12. Late Move Reductions (LMR)
+----------------------------------------------------------------------
+
+Source page (contains pseudocode and tuning advice):
+  Chess Programming Wiki — Late Move Reductions
+  https://www.chessprogramming.org/Late_Move_Reductions
+
+What it is:
+  Alpha-beta with good move ordering (TT best move + killers + MVV-LVA) means
+  moves near the end of the list are usually bad. LMR exploits this: instead
+  of searching them at full depth, reduce their depth by 1-2 plies. If the
+  reduced search still raises alpha (the move turned out to be good after all),
+  we re-search it at full depth to get the accurate score. If not, we discard
+  it cheaply and move on. Because the bad moves are searched shallower, the
+  engine spends most of its time on the likely-good moves, effectively reaching
+  greater depth in the same amount of time.
+
+Conditions before applying a reduction (all must be true):
+  1. depth >= 3 (LMR at shallow nodes wastes the re-search overhead)
+  2. move index >= 3 (always search the first few moves at full depth)
+  3. move is quiet (not a capture — captures are always searched at full depth)
+  4. side to move is not currently in check
+
+Reduction amount:
+  Move index 3-5: reduce by 1 ply
+  Move index 6+:  reduce by 2 plies (these are very late and almost certainly bad)
+
+Our code in negamax():
+  reduction is computed per move before make_move_in_place.
+  The negamax call uses depth - 1 - reduction.
+  If the reduced score > alpha, we immediately re-search at depth - 1 (no reduction)
+  to confirm the move is genuinely good before updating alpha.
+
+
+----------------------------------------------------------------------
+13. History Heuristic
+----------------------------------------------------------------------
+
+Source page:
+  Chess Programming Wiki — History Heuristic
+  https://www.chessprogramming.org/History_Heuristic
+
+What it is:
+  The history heuristic tracks how often each quiet move (identified by its
+  from/to square pair) has caused a beta cutoff across the entire search tree,
+  not just within a single ply like killers. When a quiet move cuts off a
+  branch, its history score is incremented by depth*depth — deeper cutoffs
+  count more because they represent stronger evidence the move is good.
+  Moves with high history scores are sorted earlier in the move list, which
+  improves alpha-beta pruning across the whole game.
+
+  History sits below killers (90/80) but above unscored quiet moves (0),
+  scoring in the range 1-70. This preserves the ordering hierarchy:
+  captures (MVV-LVA) > killers > history > quiet moves.
+
+Our code:
+  history_table[8][10][8][10] — one int per from/to square pair
+  Incremented by depth*depth in negamax on every quiet beta cutoff
+  Reset to zero at the start of each SelectBestMove call
+  score_move() clamps history to 70 so it never overtakes killers

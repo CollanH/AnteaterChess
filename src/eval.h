@@ -209,8 +209,8 @@ static const int ATTACKER_WEIGHT[8]={
 #define DOUBLED_ANT_PENALTY 20
 #define ISOLATED_ANT_PENALTY 20
 /*King Safety - shield penalities*/
-#define SHIELD_MISSING 5
-#define SHIELD_PUSHED 2
+#define SHIELD_MISSING 45
+#define SHIELD_PUSHED  15
 /*Anteater bonus per adjacent enemy ant*/
 #define ANTEATER_ADJ_BONUS 25
 

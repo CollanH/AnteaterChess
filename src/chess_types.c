@@ -4,7 +4,7 @@
 // simple helper functions
 static inline bool in_bounds_sq(Square s)
 {
-	return s.rank >= 0 && s.rank < 8 && s.file >= A && s.file <= J;
+	return s.rank >= 0 && s.rank < 8 && s.file >= A && s.file < BOARD_FILES;
 }
 
 static inline bool is_empty_piece(Piece p)
@@ -462,8 +462,8 @@ void make_move_in_place(GameState *gs, Move move, UndoData *undo)
             undo->flags |= UNDO_WAS_CASTLE;
 
             if (fileDistance == 2) {
-                // kingside
-                undo->rook_from = make_square(from.rank, J);
+                // kingside: standard chess rook at H, anteater at J
+                undo->rook_from = make_square(from.rank, standard_chess_mode ? H : J);
                 undo->rook_to   = make_square(from.rank, from.file + 1);
             } else {
                 // queenside
@@ -483,19 +483,21 @@ void make_move_in_place(GameState *gs, Move move, UndoData *undo)
     }
 
     // rook moved: revoke that rook's castling right
-    if (moved.piecetype == ROOK) {
-        if (square_equals(from, make_square(7, A))) gs->yellow_qscastle = false;
-        if (square_equals(from, make_square(7, J))) gs->yellow_kscastle = false;
-        if (square_equals(from, make_square(0, A))) gs->blue_qscastle   = false;
-        if (square_equals(from, make_square(0, J))) gs->blue_kscastle   = false;
-    }
-
-    // rook captured on home square: revoke that side's castling right too
-    if (!is_empty_piece(undo->captured_piece) && undo->captured_piece.piecetype == ROOK) {
-        if (square_equals(undo->captured_square, make_square(7, A))) gs->yellow_qscastle = false;
-        if (square_equals(undo->captured_square, make_square(7, J))) gs->yellow_kscastle = false;
-        if (square_equals(undo->captured_square, make_square(0, A))) gs->blue_qscastle   = false;
-        if (square_equals(undo->captured_square, make_square(0, J))) gs->blue_kscastle   = false;
+    {
+        File ks_file = standard_chess_mode ? H : J;
+        if (moved.piecetype == ROOK) {
+            if (square_equals(from, make_square(7, A)))      gs->yellow_qscastle = false;
+            if (square_equals(from, make_square(7, ks_file))) gs->yellow_kscastle = false;
+            if (square_equals(from, make_square(0, A)))      gs->blue_qscastle   = false;
+            if (square_equals(from, make_square(0, ks_file))) gs->blue_kscastle   = false;
+        }
+        // rook captured on home square: revoke that side's castling right too
+        if (!is_empty_piece(undo->captured_piece) && undo->captured_piece.piecetype == ROOK) {
+            if (square_equals(undo->captured_square, make_square(7, A)))      gs->yellow_qscastle = false;
+            if (square_equals(undo->captured_square, make_square(7, ks_file))) gs->yellow_kscastle = false;
+            if (square_equals(undo->captured_square, make_square(0, A)))      gs->blue_qscastle   = false;
+            if (square_equals(undo->captured_square, make_square(0, ks_file))) gs->blue_kscastle   = false;
+        }
     }
 
     if (!keep_turn) {

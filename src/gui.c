@@ -30,6 +30,7 @@
 
 // different screens used by the gui
 typedef enum {
+    SCREEN_MODE,
     SCREEN_MATCHUP,
     SCREEN_COLOR,
     SCREEN_CLOCK,
@@ -486,9 +487,11 @@ static void renderGameScreen(int showClocks)
     SDL_SetRenderDrawColor(renderer, 40, 40, 40, 255);
     SDL_RenderClear(renderer);
 
+    int board_cols = standard_chess_mode ? 8 : 10;
+
     // draw the board squares and pieces
     for (row = 0; row < 8; row++) {
-        for (col = 0; col < 10; col++) {
+        for (col = 0; col < board_cols; col++) {
             int boardRow;
             int boardCol;
             int x;
@@ -502,7 +505,7 @@ static void renderGameScreen(int showClocks)
                 boardCol = col;
             } else {
                 boardRow = 7 - row;
-                boardCol = 9 - col;
+                boardCol = (board_cols - 1) - col;
             }
 
             x = BOARD_X + col * SQUARE_SIZE;
@@ -530,11 +533,14 @@ static void renderGameScreen(int showClocks)
             int hrow;
             SDL_Rect rect;
 
+            // skip moves that land outside the active board (e.g. standard chess ignores cols 8-9)
+            if (highlightMoves.moves[i].to.file >= board_cols) continue;
+
             if (humanColor == YELLOW) {
                 hcol = highlightMoves.moves[i].to.file;
                 hrow = highlightMoves.moves[i].to.rank;
             } else {
-                hcol = 9 - highlightMoves.moves[i].to.file;
+                hcol = (board_cols - 1) - highlightMoves.moves[i].to.file;
                 hrow = 7 - highlightMoves.moves[i].to.rank;
             }
 
@@ -551,15 +557,14 @@ static void renderGameScreen(int showClocks)
     }
 
     // draw file labels at the bottom of the board
-  
-    for (col = 0; col <= 9; col++) {
-        int file, rank;
+    int last_col = standard_chess_mode ? 7 : 9;
+    for (col = 0; col <= last_col; col++) {
         char lbl[2];
 
         if (humanColor == YELLOW) {
             lbl[0] = 'A' + col;
         } else {
-            lbl[0] = 'J' - col;
+            lbl[0] = (standard_chess_mode ? 'H' : 'J') - col;
         }
         lbl[1] = '\0';
         //  to_view_coords(humanColor, col, 0, &file, &rank);
@@ -575,9 +580,7 @@ static void renderGameScreen(int showClocks)
     }
 
     // draw rank labels on the left of the board
-        
     for (row = 0; row <= 7; row++) {
-        int file, rank;
         char lbl[8];
 
         snprintf(lbl, sizeof(lbl), "%d",
@@ -665,8 +668,13 @@ static void renderGameScreen(int showClocks)
                  (SDL_Color){0, 0, 0, 255},
                  smallFont);
 
-        //stopping the chain button for the anteater 
-        if (currentGameState && currentGameState->anteater_ate) {
+        // show current mode in panel
+        drawText(standard_chess_mode ? "Standard Chess" : "Anteater Chess",
+                 contentX, yCursor, (SDL_Color){180, 180, 180, 255}, smallFont);
+        yCursor += 26;
+
+        //stopping the chain button for the anteater (anteater chess only)
+        if (!standard_chess_mode && currentGameState && currentGameState->anteater_ate) {
             stopChainBtnW = contentW; 
             stopChainBtnX = contentX; 
             stopChainBtnH = 44; 
@@ -902,21 +910,54 @@ void setHumanColor(Color c)
     humanColor = c;
 }
 
-// show the matchup selection menu
+// show the game mode selection menu (returns 0=Anteater Chess, 1=Standard Chess, -1=Exit)
+int gameModeMenu(void)
+{
+    const char *options[] = {"Anteater Chess (10x8)", "Standard Chess (8x8)", "Exit"};
+    int selected = 0;
+    SDL_Event e;
+
+    currentScreen = SCREEN_MODE;
+
+    while (1) {
+        renderMenuScreen("Select Game Mode", options, 3, selected);
+
+        while (SDL_PollEvent(&e)) {
+            if (e.type == SDL_QUIT) return -1;
+
+            if (e.type == SDL_MOUSEMOTION) {
+                if (pointInRect(e.motion.x, e.motion.y, 250, 300, 500, 55))
+                    selected = 0;
+                else if (pointInRect(e.motion.x, e.motion.y, 250, 380, 500, 55))
+                    selected = 1;
+                else if (pointInRect(e.motion.x, e.motion.y, 250, 460, 500, 55))
+                    selected = 2;
+            }
+
+            if (e.type == SDL_MOUSEBUTTONDOWN) {
+                if (pointInRect(e.button.x, e.button.y, 250, 300, 500, 55)) return 0;
+                if (pointInRect(e.button.x, e.button.y, 250, 380, 500, 55)) return 1;
+                if (pointInRect(e.button.x, e.button.y, 250, 460, 500, 55)) return -1;
+            }
+        }
+    }
+}
+
+// show the matchup selection menu (returns 0/1/2 or -1=Back)
 int matchupMenu(void)
 {
-    const char *options[] = {"Human vs Human", "Human vs AI", "AI vs AI"};
+    const char *options[] = {"Human vs Human", "Human vs AI", "AI vs AI", "<- Back"};
     int selected = 0;
     SDL_Event e;
 
     currentScreen = SCREEN_MATCHUP;
 
     while (1) {
-        renderMenuScreen("Choose Matchup", options, 3, selected);
+        renderMenuScreen("Choose Matchup", options, 4, selected);
 
         while (SDL_PollEvent(&e)) {
             if (e.type == SDL_QUIT) {
-                return 0;
+                return -1;
             }
 
             if (e.type == SDL_MOUSEMOTION) {
@@ -926,6 +967,8 @@ int matchupMenu(void)
                     selected = 1;
                 } else if (pointInRect(e.motion.x, e.motion.y, 250, 460, 500, 55)) {
                     selected = 2;
+                } else if (pointInRect(e.motion.x, e.motion.y, 250, 540, 500, 55)) {
+                    selected = 3;
                 }
             }
 
@@ -939,26 +982,29 @@ int matchupMenu(void)
                 if (pointInRect(e.button.x, e.button.y, 250, 460, 500, 55)) {
                     return 2;
                 }
+                if (pointInRect(e.button.x, e.button.y, 250, 540, 500, 55)) {
+                    return -1;
+                }
             }
         }
     }
 }
 
-// show the color selection menu
-Color colorMenu(void)
+// show the color selection menu (returns YELLOW=0, BLUE=1, or -1=Back)
+int colorMenu(void)
 {
-    const char *options[] = {"YELLOW (yellow goes first)", "BLUE"};
+    const char *options[] = {"YELLOW (yellow goes first)", "BLUE", "<- Back"};
     int selected = 0;
     SDL_Event e;
 
     currentScreen = SCREEN_COLOR;
 
     while (1) {
-        renderMenuScreen("Choose Color", options, 2, selected);
+        renderMenuScreen("Choose Color", options, 3, selected);
 
         while (SDL_PollEvent(&e)) {
             if (e.type == SDL_QUIT) {
-                return YELLOW;
+                return -1;
             }
 
             if (e.type == SDL_MOUSEMOTION) {
@@ -966,6 +1012,8 @@ Color colorMenu(void)
                     selected = 0;
                 } else if (pointInRect(e.motion.x, e.motion.y, 250, 380, 500, 55)) {
                     selected = 1;
+                } else if (pointInRect(e.motion.x, e.motion.y, 250, 460, 500, 55)) {
+                    selected = 2;
                 }
             }
 
@@ -976,26 +1024,29 @@ Color colorMenu(void)
                 if (pointInRect(e.button.x, e.button.y, 250, 380, 500, 55)) {
                     return BLUE;
                 }
+                if (pointInRect(e.button.x, e.button.y, 250, 460, 500, 55)) {
+                    return -1;
+                }
             }
         }
     }
 }
 
-// show the clock selection menu
+// show the clock selection menu (returns 1/2/3 or -1=Back)
 int clockMenu(void)
 {
-    const char *options[] = {"5 Minutes", "10 Minutes", "15 Minutes"};
+    const char *options[] = {"5 Minutes", "10 Minutes", "15 Minutes", "<- Back"};
     int selected = 0;
     SDL_Event e;
 
     currentScreen = SCREEN_CLOCK;
 
     while (1) {
-        renderMenuScreen("Choose Time Control", options, 3, selected);
+        renderMenuScreen("Choose Time Control", options, 4, selected);
 
         while (SDL_PollEvent(&e)) {
             if (e.type == SDL_QUIT) {
-                return 1;
+                return -1;
             }
 
             if (e.type == SDL_MOUSEMOTION) {
@@ -1005,6 +1056,8 @@ int clockMenu(void)
                     selected = 1;
                 } else if (pointInRect(e.motion.x, e.motion.y, 250, 460, 500, 55)) {
                     selected = 2;
+                } else if (pointInRect(e.motion.x, e.motion.y, 250, 540, 500, 55)) {
+                    selected = 3;
                 }
             }
 
@@ -1017,27 +1070,30 @@ int clockMenu(void)
                 }
                 if (pointInRect(e.button.x, e.button.y, 250, 460, 500, 55)) {
                     return 3;
+                }
+                if (pointInRect(e.button.x, e.button.y, 250, 540, 500, 55)) {
+                    return -1;
                 }
             }
         }
     }
 }
 
-// show the ai difficulty menu
+// show the ai difficulty menu (returns 1/2/3 or -1=Back)
 int difficultyMenu(void)
 {
-    const char *options[] = {"Easy", "Medium", "Hard"};
+    const char *options[] = {"Easy", "Medium", "Hard", "<- Back"};
     int selected = 0;
     SDL_Event e;
 
     currentScreen = SCREEN_DIFFICULTY;
 
     while (1) {
-        renderMenuScreen("Choose AI Difficulty", options, 3, selected);
+        renderMenuScreen("Choose AI Difficulty", options, 4, selected);
 
         while (SDL_PollEvent(&e)) {
             if (e.type == SDL_QUIT) {
-                return 1;
+                return -1;
             }
 
             if (e.type == SDL_MOUSEMOTION) {
@@ -1047,6 +1103,8 @@ int difficultyMenu(void)
                     selected = 1;
                 } else if (pointInRect(e.motion.x, e.motion.y, 250, 460, 500, 55)) {
                     selected = 2;
+                } else if (pointInRect(e.motion.x, e.motion.y, 250, 540, 500, 55)) {
+                    selected = 3;
                 }
             }
 
@@ -1059,6 +1117,9 @@ int difficultyMenu(void)
                 }
                 if (pointInRect(e.button.x, e.button.y, 250, 460, 500, 55)) {
                     return 3;
+                }
+                if (pointInRect(e.button.x, e.button.y, 250, 540, 500, 55)) {
+                    return -1;
                 }
             }
         }
@@ -1136,9 +1197,11 @@ Move getMove(GameState *gs)
                     break;
                 }
 
-                // ignore clicks outside the board
-                if (screenCol < 0 || screenCol >= 10 || screenRow < 0 || screenRow >= 8) {
-                    continue;
+                // ignore clicks outside the active board area
+                {
+                    int active_cols = standard_chess_mode ? 8 : 10;
+                    if (screenCol < 0 || screenCol >= active_cols || screenRow < 0 || screenRow >= 8)
+                        continue;
                 }
 
                 // convert screen coordinates to board coordinates
@@ -1146,7 +1209,7 @@ Move getMove(GameState *gs)
                     sq.file = screenCol;
                     sq.rank = screenRow;
                 } else {
-                    sq.file = 9 - screenCol;
+                    sq.file = (standard_chess_mode ? 7 : 9) - screenCol;
                     sq.rank = 7 - screenRow;
                 }
 

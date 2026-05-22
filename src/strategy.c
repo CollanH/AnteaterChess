@@ -460,7 +460,7 @@ int negamax(GameState *gs, int depth, int alpha, int beta, int ply)
         {
             gs->turn = YELLOW;
         }
-        score = -negamax(gs, depth - 2, -beta, -beta + 1, ply + 1);
+        score = -negamax(gs, depth - 3, -beta, -beta + 1, ply + 1);
         if (gs->turn == YELLOW)
         {
             gs->turn = BLUE;
@@ -554,21 +554,56 @@ int negamax(GameState *gs, int depth, int alpha, int beta, int ply)
     return best;
 }
 
+// runs one pass of the root move loop with the given alpha/beta window.
+// updates *outBest and *outScore with the best move and score found.
+static void rootSearch(GameState *gs, MoveList *moves, int depth,
+                       int alpha, int beta,
+                       Move *outBest, int *outScore,
+                       bool *aborted)
+{
+    int      i;
+    int      score;
+    Color    sideToMove;
+    UndoData undo;
+
+    *outScore = -INF;
+    *outBest  = moves->moves[0];
+
+    for (i = 0; i < moves->count; i++)
+    {
+        sideToMove = gs->turn;
+        make_move_in_place(gs, moves->moves[i], &undo);
+
+        if (gs->turn == sideToMove)
+            score = negamax(gs, depth - 1, alpha, beta, 1);
+        else
+            score = -negamax(gs, depth - 1, -beta, -alpha, 1);
+
+        undo_move_in_place(gs, moves->moves[i], &undo);
+
+        if (searchAborted) { *aborted = true; return; }
+
+        if (i == 0 || score > *outScore)
+        {
+            *outScore = score;
+            *outBest  = moves->moves[i];
+        }
+        if (score > alpha) alpha = score;
+    }
+}
+
 Move* SelectBestMove(GameState *gs, Color color, int depth)
 {
     static Move bestMove;
     Move        bestAtDepth;
     MoveList    moves;
     int         bestScoreAtDepth;
-    int         alpha;
-    int         beta;
     int         i;
     int         currentDepth;
-    int         score;
+    int         prevScore;
     struct timespec start;
     double          elapsed;
-    Color       sideToMove;
-    UndoData    undo;
+    bool            aborted;
 
     (void)color;
 
@@ -581,6 +616,7 @@ Move* SelectBestMove(GameState *gs, Color color, int depth)
     searchAborted   = false;
     nodeCount       = 0;
     start           = searchStartTime;
+    prevScore       = -INF;
     memset(killerMoves,  0, sizeof(killerMoves));
     memset(historyTable, 0, sizeof(historyTable));
 
@@ -598,60 +634,66 @@ Move* SelectBestMove(GameState *gs, Color color, int depth)
     for (currentDepth = 2; currentDepth <= depth; currentDepth += (currentDepth < 6 ? 2 : 1))
     {
         { struct timespec _now; clock_gettime(CLOCK_MONOTONIC, &_now); elapsed = (_now.tv_sec - start.tv_sec) + (_now.tv_nsec - start.tv_nsec) * 1e-9; }
-        if (elapsed >= TIME_LIMIT_SECS)
-        {
-            break;
-        }
+        if (elapsed >= TIME_LIMIT_SECS) break;
 
-        bestAtDepth      = bestMove;
-        bestScoreAtDepth = -INF;
-        alpha            = -INF;
-        beta             = INF;
-
+        // put the previous iteration's best move first so alpha-beta prunes faster
         for (i = 0; i < moves.count; i++)
         {
-            sideToMove = gs->turn;
-
-            make_move_in_place(gs, moves.moves[i], &undo);
-
-            if (gs->turn == sideToMove)
+            if (movesEqual(moves.moves[i], bestMove))
             {
-                score = negamax(gs, currentDepth - 1, alpha, beta, 1);
+                Move tmp       = moves.moves[0];
+                moves.moves[0] = moves.moves[i];
+                moves.moves[i] = tmp;
+                break;
+            }
+        }
+
+        // aspiration windows: start with a narrow band around the previous score.
+        // if the search falls outside, widen and retry until the result is inside
+        // the window or we've opened it to full width.
+        int aspWindow = 50;
+        int aspLo = (prevScore > -INF/2) ? prevScore - aspWindow : -INF;
+        int aspHi = (prevScore > -INF/2) ? prevScore + aspWindow :  INF;
+
+        while (1)
+        {
+            aborted = false;
+            rootSearch(gs, &moves, currentDepth,
+                       aspLo, aspHi,
+                       &bestAtDepth, &bestScoreAtDepth,
+                       &aborted);
+
+            if (aborted) { searchAborted = true; break; }
+
+            if (bestScoreAtDepth <= aspLo && aspLo > -INF/2)
+            {
+                // fail-low: score is worse than expected, widen the low end
+                aspWindow *= 4;
+                aspLo = prevScore - aspWindow;
+                if (aspLo < -INF/2) aspLo = -INF;
+            }
+            else if (bestScoreAtDepth >= aspHi && aspHi < INF/2)
+            {
+                // fail-high: score is better than expected, widen the high end
+                aspWindow *= 4;
+                aspHi = prevScore + aspWindow;
+                if (aspHi > INF/2) aspHi = INF;
             }
             else
             {
-                score = -negamax(gs, currentDepth - 1, -beta, -alpha, 1);
-            }
-
-            undo_move_in_place(gs, moves.moves[i], &undo);
-
-            if (searchAborted)
-            {
-                break;
-            }
-
-            if (i == 0 || score > bestScoreAtDepth)
-            {
-                bestScoreAtDepth = score;
-                bestAtDepth      = moves.moves[i];
-            }
-
-            if (score > alpha)
-            {
-                alpha = score;
+                break;  // result is within window, accept it
             }
         }
 
         if (!searchAborted)
         {
-            bestMove = bestAtDepth;
+            bestMove  = bestAtDepth;
+            prevScore = bestScoreAtDepth;
             { struct timespec _now; clock_gettime(CLOCK_MONOTONIC, &_now); elapsed = (_now.tv_sec - start.tv_sec) + (_now.tv_nsec - start.tv_nsec) * 1e-9; }
-            printf("depth %d done in %.2fs  best: %c%d -> %c%d\n",
-                   currentDepth,
-                   elapsed,
+            fprintf(stderr, "depth %d done in %.2fs  best: %c%d -> %c%d\n",
+                   currentDepth, elapsed,
                    'A' + bestAtDepth.from.file, bestAtDepth.from.rank + 1,
                    'A' + bestAtDepth.to.file,   bestAtDepth.to.rank   + 1);
-            fflush(stdout);
         }
         else
         {

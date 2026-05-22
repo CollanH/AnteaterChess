@@ -1,5 +1,7 @@
-<<<<<<< HEAD
+bin/
+*.o
+*.dSYM
+chess_log.txt
+src/practice
+src/textChess
 .DS_Store
-=======
-.idea/
->>>>>>> 2649416 (add git ignore and textui files)

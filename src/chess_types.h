@@ -112,6 +112,12 @@ enum {
 };
 
 
+// 0 = Anteater Chess (default), 1 = Standard Chess (8x8, no anteater piece)
+extern int standard_chess_mode;
+
+// number of files in the current mode: 8 for Standard Chess, 10 for Anteater Chess
+#define BOARD_FILES (standard_chess_mode ? 8 : 10)
+
 // FOR GUI TO CALL
 GameState* undo(GameState* gs);
 GameState* make_move(const GameState* gs, Move move);

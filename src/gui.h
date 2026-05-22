@@ -9,8 +9,9 @@ void guiQuit(void);
 void setGameState(GameState *gs);
 void setHumanColor(Color c);
 
+int gameModeMenu(void);
 int matchupMenu(void);
-Color colorMenu(void);
+int colorMenu(void);
 int difficultyMenu(void);
 int clockMenu(void);
 void addMoveLog(Color color, Move move, Color humanColor); 

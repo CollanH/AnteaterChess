@@ -23,10 +23,11 @@ int canAttackSquare(GameState *gs, int fa, int ra, int fb, int rb){
 
     case ANT:
     //ants capture diagonally one step forward only
+    // Yellow advances toward row 0 (rank decreases), Blue toward row 7
         if (piece.color == YELLOW)
-            return (dr == 1 && abs(df) == 1);
-        else 
             return (dr == -1 && abs(df) == 1);
+        else
+            return (dr == 1 && abs(df) == 1);
 
     case KNIGHT: 
         return ((abs(df) == 2 && abs(dr) == 1) || (abs(df) == 1 && abs(dr) == 2));
@@ -59,65 +60,110 @@ int canAttackSquare(GameState *gs, int fa, int ra, int fb, int rb){
 }
 
 int evalMobility(GameState *gs){
+    static const int KNIGHT_DELTAS[8][2] = {{-2,-1},{-2,1},{-1,-2},{-1,2},{1,-2},{1,2},{2,-1},{2,1}};
+    static const int SLIDE_DIAG[4][2]    = {{1,1},{1,-1},{-1,1},{-1,-1}};
+    static const int SLIDE_ORTH[4][2]    = {{1,0},{-1,0},{0,1},{0,-1}};
+    static const int SLIDE_ALL[8][2]     = {{1,0},{-1,0},{0,1},{0,-1},{1,1},{1,-1},{-1,1},{-1,-1}};
+    static const int STEP_ALL[8][2]      = {{-1,-1},{-1,0},{-1,1},{0,-1},{0,1},{1,-1},{1,0},{1,1}};
+
     int score = 0;
-    Color side = gs -> turn;
-    
+    Color side = gs->turn;
+    int phase = getGamePhase(gs);
+
     for(int r = 0; r < 8; r++){
         for(int f = 0; f < 10; f++){
             Piece piece = gs->board[r][f];
             if(piece.piecetype == EMPTY) continue;
-            if(piece.piecetype == ANT) continue; // ant handled in evalPawnStructure
-            if(piece.piecetype == KING) continue; // king handled in evalKingSafety
+            if(piece.piecetype == ANT)   continue;
+            if(piece.piecetype == KING)  continue;
 
-            int phase = getGamePhase(gs);
             int weight = MOB_WEIGHTS[piece.piecetype];
-
             if(piece.piecetype == QUEEN && phase >= 20) weight = 3;
 
-            int mobilityCount = 0;
-            int df, dr;
+            int mob = 0;
 
-            for(int tr = 0; tr < 8; tr++){
-                for(int tf = 0; tf < 10; tf++){
-                    if(tf == f && tr == r) continue; // same square
-
-                    df = tf - f;
-                    dr = tr -r;
-
-                    int possible = 1;
-                    switch(piece.piecetype){
-                        case KNIGHT:
-                            possible = ((abs(df)==2 && abs(dr)==1) ||
-                                        (abs(df)==1 && abs(dr)==2));
-                            break;
-                        case BISHOP:
-                            possible = (abs(df) == abs(dr));
-                            break;
-                        case ROOK:
-                            possible = (df == 0 || dr == 0);   
-                            break;
-                        case QUEEN:
-                            possible = (abs(df)==abs(dr) || df==0 || dr==0);
-                            break;
-                        case ANTEATER:
-                            possible = (abs(df) <= 1 && abs(dr) <= 1);  
-                            break;
-                        default:
-                            possible = 1;
-                            break;
+            switch(piece.piecetype){
+                case KNIGHT:
+                    for(int d = 0; d < 8; d++){
+                        int nr = r + KNIGHT_DELTAS[d][0];
+                        int nf = f + KNIGHT_DELTAS[d][1];
+                        if(nr < 0 || nr > 7 || nf < 0 || nf >= BOARD_FILES) continue;
+                        Piece t = gs->board[nr][nf];
+                        if(t.piecetype != EMPTY && t.color == piece.color) continue;
+                        mob++;
                     }
-                    if(!possible) continue;
+                    break;
 
-                    Piece target = gs->board[tr][tf];
-                    if((target.piecetype != EMPTY) && (target.color == piece.color)) continue; //blocked by own piece
-                    if (canAttackSquare(gs, f, r, tf, tr)) mobilityCount++;
-                }
+                case BISHOP:
+                    for(int d = 0; d < 4; d++){
+                        int nr = r + SLIDE_DIAG[d][0];
+                        int nf = f + SLIDE_DIAG[d][1];
+                        while(nr >= 0 && nr <= 7 && nf >= 0 && nf < BOARD_FILES){
+                            Piece t = gs->board[nr][nf];
+                            if(t.piecetype != EMPTY){
+                                if(t.color != piece.color) mob++;
+                                break;
+                            }
+                            mob++;
+                            nr += SLIDE_DIAG[d][0];
+                            nf += SLIDE_DIAG[d][1];
+                        }
+                    }
+                    break;
+
+                case ROOK:
+                    for(int d = 0; d < 4; d++){
+                        int nr = r + SLIDE_ORTH[d][0];
+                        int nf = f + SLIDE_ORTH[d][1];
+                        while(nr >= 0 && nr <= 7 && nf >= 0 && nf < BOARD_FILES){
+                            Piece t = gs->board[nr][nf];
+                            if(t.piecetype != EMPTY){
+                                if(t.color != piece.color) mob++;
+                                break;
+                            }
+                            mob++;
+                            nr += SLIDE_ORTH[d][0];
+                            nf += SLIDE_ORTH[d][1];
+                        }
+                    }
+                    break;
+
+                case QUEEN:
+                    for(int d = 0; d < 8; d++){
+                        int nr = r + SLIDE_ALL[d][0];
+                        int nf = f + SLIDE_ALL[d][1];
+                        while(nr >= 0 && nr <= 7 && nf >= 0 && nf < BOARD_FILES){
+                            Piece t = gs->board[nr][nf];
+                            if(t.piecetype != EMPTY){
+                                if(t.color != piece.color) mob++;
+                                break;
+                            }
+                            mob++;
+                            nr += SLIDE_ALL[d][0];
+                            nf += SLIDE_ALL[d][1];
+                        }
+                    }
+                    break;
+
+                case ANTEATER:
+                    for(int d = 0; d < 8; d++){
+                        int nr = r + STEP_ALL[d][0];
+                        int nf = f + STEP_ALL[d][1];
+                        if(nr < 0 || nr > 7 || nf < 0 || nf >= BOARD_FILES) continue;
+                        Piece t = gs->board[nr][nf];
+                        if(t.piecetype != EMPTY && t.color == piece.color) continue;
+                        mob++;
+                    }
+                    break;
+
+                default: break;
             }
-        if (piece.color == side) score += mobilityCount * weight;
-        else score -= mobilityCount * weight;
+
+            if(piece.color == side) score += mob * weight;
+            else                    score -= mob * weight;
         }
     }
-    return score;   
+    return score;
 }
 
 int evalKingSafety(GameState *gs){
@@ -188,7 +234,7 @@ int evalAnteater(GameState *gs){
                 int nr = r + dr;
 
                 // first square MUST be enemy ant
-                if(nf < 0 || nf > 9 || nr < 0 || nr > 7) continue;
+                if(nf < 0 || nf >= BOARD_FILES || nr < 0 || nr > 7) continue;
 
                 Piece first = gs->board[nr][nf];
                 if(first.piecetype != ANT || first.color != enemy) continue;
@@ -196,7 +242,7 @@ int evalAnteater(GameState *gs){
                 // start chain
                 int length = 0;
 
-                while(nf >= 0 && nf <= 9 && nr >= 0 && nr <= 7){
+                while(nf >= 0 && nf < BOARD_FILES && nr >= 0 && nr <= 7){
                     Piece curr = gs->board[nr][nf];
 
                     if(curr.piecetype == ANT && curr.color == enemy){
@@ -398,8 +444,10 @@ int evalTempo(GameState *gs){
 
             int inEnemyHalf = 0;
 
-            if(p.color == YELLOW && r >= 4) inEnemyHalf = 1;
-            if(p.color == BLUE && r <= 3) inEnemyHalf = 1;
+            // Yellow starts at row 7, advances toward row 0; enemy half = rows 0-3
+            if(p.color == YELLOW && r <= 3) inEnemyHalf = 1;
+            // Blue starts at row 0, advances toward row 7; enemy half = rows 4-7
+            if(p.color == BLUE && r >= 4) inEnemyHalf = 1;
 
             if(inEnemyHalf){
                 if(p.color == side) score += 5;
@@ -432,7 +480,7 @@ int evalKingEscape(GameState *gs){
                     int nf = f + df;
 
                     if(nr < 0 || nr > 7) continue;
-                    if(nf <0 || nf > 9) continue;
+                    if(nf < 0 || nf >= BOARD_FILES) continue;
 
                     Piece target = gs -> board[nr][nf];
 
@@ -455,8 +503,8 @@ int evalBackRank(GameState *gs){
     int score = 0;
     Color side = gs->turn;
 
-    int yellowHomeRank = 0;
-    int blueHomeRank = 7;
+    int yellowHomeRank = 7;
+    int blueHomeRank = 0;
 
     for(int r = 0; r < 8; r++){
         for(int f = 0; f < 10; f++){
@@ -464,14 +512,14 @@ int evalBackRank(GameState *gs){
             if(p.piecetype != KING) continue;
 
             int homeRank = (p.color == YELLOW) ? yellowHomeRank : blueHomeRank;
-            int forwardRank = (p.color == YELLOW) ? r + 1 : r - 1;
+            int forwardRank = (p.color == YELLOW) ? r - 1 : r + 1;
 
             if(r != homeRank) continue;
 
             int blocked = 0;
             for(int df = -1; df <= 1; df++){
                 int nf = f + df;
-                if(nf < 0 || nf > 9) continue;
+                if(nf < 0 || nf >= BOARD_FILES) continue;
                 if(forwardRank < 0 || forwardRank > 7) continue;
 
                 Piece fwd = gs->board[forwardRank][nf];
@@ -688,12 +736,12 @@ int KingDangerScore(GameState* gs, Color side){
         for(int zr = kr-1; zr <= kr + 1; zr++){
             for(int zf = kf - 1; zf <= kf + 1; zf++){
 
-            if (zf < 0 || zf > 9) continue;
+            if (zf < 0 || zf >= BOARD_FILES) continue;
             if (zr < 0 || zr > 7) continue;
             if(zf == kf && zr == kr) continue;
 
                 for(int ar = 0; ar < 8; ar++){
-                    for(int af = 0; af < 10; af++){
+                    for(int af = 0; af < BOARD_FILES; af++){
                         Piece attacker = gs->board[ar][af];
 
                         if(attacker.piecetype == EMPTY) continue;
@@ -724,7 +772,7 @@ int KingDangerScore(GameState* gs, Color side){
                             break;
 
                             case ANT:
-                            possible = (attacker.color == YELLOW) ? (dr == 1 && abs(df) == 1) : (dr == -1 && abs(df) == 1);
+                            possible = (attacker.color == YELLOW) ? (dr == -1 && abs(df) == 1) : (dr == 1 && abs(df) == 1);
                             break;
 
                             case KING:
@@ -767,14 +815,14 @@ int shieldPenalty(GameState *gs, Color side){
 
     int penalty = 0;
 
-    /* shield rank is directly in front of king */
-    int shieldRank  = (side == YELLOW) ? kr + 1 : kr - 1;
-    int shieldRank2 = (side == YELLOW) ? kr + 2 : kr - 2;
+    /* shield rank is directly in front of king (Yellow advances toward row 0) */
+    int shieldRank  = (side == YELLOW) ? kr - 1 : kr + 1;
+    int shieldRank2 = (side == YELLOW) ? kr - 2 : kr + 2;
 
     /* check three files: left of king, king file, right of king */
     for(int df = -1; df <= 1; df++){
         int sf = kf + df;
-        if(sf < 0 || sf > 9) continue;
+        if(sf < 0 || sf >= BOARD_FILES) continue;
 
         /* check if shield rank is on the board */
         if(shieldRank >= 0 && shieldRank <= 7 &&
@@ -806,16 +854,16 @@ int evalPassedAnts(GameState *gs, Color side){
             if(piece.color != side) continue;
 
             int passed = 1;
-            
-            int start = (side == YELLOW) ? r + 1 : r - 1;
-            int end = (side == YELLOW) ? 7 : 0;
-            int step = (side == YELLOW) ? 1 : -1;
+            // Yellow advances toward row 0, Blue toward row 7
+            int start = (side == YELLOW) ? r - 1 : r + 1;
+            int end = (side == YELLOW) ? 0 : 7;
+            int step = (side == YELLOW) ? -1 : 1;
 
-            for(int rr = start; (side == YELLOW ? rr<= end : rr >= end); rr+=step){
+            for(int rr = start; (side == YELLOW ? rr >= end : rr <= end); rr+=step){
                 for(int df = -1; df<= 1; df++){
                     int nf = f + df;
 
-                    if(nf < 0 || nf > 9) continue;
+                    if(nf < 0 || nf >= BOARD_FILES) continue;
 
                     Piece check = gs->board[rr][nf];
 
@@ -828,7 +876,8 @@ int evalPassedAnts(GameState *gs, Color side){
             }
 
             if(passed){
-                int bonus = (side == YELLOW) ? r*10 : (7-r) * 10;
+                // Yellow: closer to row 0 = more advanced = higher bonus
+                int bonus = (side == YELLOW) ? (7-r)*10 : r * 10;
                 score += bonus;
             }
         }
